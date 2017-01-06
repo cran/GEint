@@ -10,7 +10,10 @@ GE_bias_normal_squaredmis(beta_list, rho_list, prob_G, cov_Z = NULL,
 \arguments{
 \item{beta_list}{A list of the effect sizes in the true model.
 Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
-If Z or M is a vector, then beta_Z and beta_M should be vectors.}
+If Z or M is a vector, then beta_Z and beta_M should be vectors.
+If Z or M is not in the model (i.e. all covariates other than G+E 
+have been specified incorrectly, or all covariates other than G+E have been 
+specified correctly, or the only covariates are G+E), then set beta_Z=0 and/or beta_M=0.}
 
 \item{rho_list}{A list of the 6 pairwise covariances between the
 covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
@@ -18,16 +21,19 @@ covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
 Again if Z or W are vectors then terms like cov_GZ should be vectors (in the order
 cov(G,Z_1),...,cov(G,Z_p)) where Z is of dimension p, and similarly for W.
 If Z or M are vectors, then cov_ZW should be a vector in the order (cov(Z_1,W_1),...,cov(Z_1,W_q),
-cov(Z_2,W_1),........,cov(Z_p,W_q) where Z is a vector of length p and W is a vector of length q.}
+cov(Z_2,W_1),........,cov(Z_p,W_q) where Z is a vector of length p and W is a vector of length q.
+If Z or M are not in the model then treat them as the constant 0.
+So for example if Z is not in the model and M (and therefore W) is a vector of length 2, we would
+have cov_EZ=0 and cov(ZW) = (0,0).}
 
 \item{prob_G}{Probability that each allele is equal to 1.  Since each SNP has
 two alleles, the expectation of G is 2*prob_G.}
 
-\item{cov_Z}{Only used if Z is a vector, gives the covariance matrix of Z (remember by assumption
+\item{cov_Z}{Only specify this if Z is a vector, gives the covariance matrix of Z (remember by assumption
 Z has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
 of the vector.}
 
-\item{cov_W}{Only used if W is a vector, gives the covariance matrix of W (remember by assumption
+\item{cov_W}{Only specify this if W is a vector, gives the covariance matrix of W (remember by assumption
 W has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
 of the vector.}
 }

@@ -33,17 +33,17 @@
 
 GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL)
 {
-	# First, make sure we got good inputs
+	  # First, make sure we got good inputs
   	if (length(beta_list) != 6 | length(rho_list) != 6 | class(beta_list) != 'list' | class(rho_list) != 'list')
   	{
   	  stop('Input vectors not the right size!')
   	}
 
-	# How long are these vectors?  Remember that W is the same length as M by assumption.
-  	num_Z <- length(beta_list[[5]])
-  	num_W <- length(beta_list[[6]])
-  	num_rho <- 2*(num_Z+num_W) + num_Z*num_W + 1
-  	
+	  # How long are these vectors?  Remember that W is the same length as M by assumption.
+    # Check for Z and M/W nonexistence LATER
+    num_Z <- length(beta_list[[5]])
+    num_W <- length(beta_list[[6]])
+
   	# Make sure we have compatible lengths for rho_list
     if (length(rho_list[[2]]) != num_Z | length(rho_list[[3]]) != num_Z | length(rho_list[[4]]) != num_W
    			| length(rho_list[[5]]) != num_W | length(rho_list[[6]]) != num_Z*num_W) {
@@ -54,7 +54,11 @@ GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=N
    	rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
    	rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
    	
-   	
+   	# Now check for Z and M/W nonexistence, after confirming rho_list is correct length
+   	# If no Z or M/W, then we need to set num_Z and num_W=0 in this function so that
+   	# the indicies will be correct later for building the covariance matrix.
+   	if (length(beta_list[[5]]) == 1 & beta_list[[5]][1] == 0) { num_Z <- 0 }
+   	if (length(beta_list[[6]]) == 1 & beta_list[[6]][1] == 0) { num_W <- 0 }
    	
    	################################################################
     # Build our covariance matrix in steps.
@@ -64,26 +68,33 @@ GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=N
     sig_mat_GE <- matrix(data=c(1, 0, r_GE, 0, 1, r_GE, r_GE, r_GE, 1), nrow=3) 
     
     # Build the p*3 matrix that describes Z with G1,G2,E
-    sig_mat_Z_column <- matrix(data=NA, nrow=num_Z, ncol=3)
-    r_GZ <- rho_GZ / (2*dnorm(w))
-    for (i in 1:num_Z) {
-    	sig_mat_Z_column[i,] <- c(r_GZ[i], r_GZ[i], rho_EZ[i])
-    }
+    if (num_Z != 0) {
+      sig_mat_Z_column <- matrix(data=NA, nrow=num_Z, ncol=3)
+      r_GZ <- rho_GZ / (2*dnorm(w))
+      for (i in 1:num_Z) {
+    	  sig_mat_Z_column[i,] <- c(r_GZ[i], r_GZ[i], rho_EZ[i])
+      }
+    } 
     
     # Build the q*3 matrix that describes W with G1,G2,E
-    sig_mat_W_column <- matrix(data=NA, nrow=num_W, ncol=3)
-    r_GW <- rho_GW / (2*dnorm(w))
-    for (i in 1:num_W) {
-    	sig_mat_W_column[i,] <- c(r_GW[i], r_GW[i], rho_EW[i])
-    }
+    if (num_W != 0)
+    {
+      sig_mat_W_column <- matrix(data=NA, nrow=num_W, ncol=3)
+      r_GW <- rho_GW / (2*dnorm(w))
+      for (i in 1:num_W) {
+      	sig_mat_W_column[i,] <- c(r_GW[i], r_GW[i], rho_EW[i])
+      }
+    } 
     
-    # Build the p*q matrix that describes Z with W
-    sig_mat_Z_W <- matrix(data=NA, nrow=num_Z, ncol=num_W)
-    for (i in 1:num_Z) {
-    	start_ind <- (i-1)*num_W+1
-    	end_ind <- i*num_W
-    	sig_mat_Z_W[i,] <- rho_ZW[start_ind:end_ind]
-    }
+    # Build the p*q matrix that describes Z with W.
+    if (num_Z != 0 & num_W != 0) {
+      sig_mat_Z_W <- matrix(data=NA, nrow=num_Z, ncol=num_W)
+      for (i in 1:num_Z) {
+    	  start_ind <- (i-1)*num_W+1
+    	  end_ind <- i*num_W
+    	  sig_mat_Z_W[i,] <- rho_ZW[start_ind:end_ind]
+      }
+    }  # No else here, just don't build it later.
     
     # If Z or W vectorized, build the ZZ and WW covariance matrices too
     if (num_Z > 1) {
@@ -91,8 +102,10 @@ GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=N
     	sig_mat_ZZ[upper.tri(sig_mat_ZZ)] <- cov_Z
     	sig_mat_ZZ <- sig_mat_ZZ + t(sig_mat_ZZ)
     	diag(sig_mat_ZZ) <- 1
-    } else {
-    	sig_mat_ZZ <- matrix(data=1, nrow=1, ncol=1)
+    } else if (num_Z == 0) {        # If no Z, then return NULL for sig_mat_ZZ.
+      sig_mat_ZZ <- NULL
+    } else if (num_Z == 1) {
+    	sig_mat_ZZ <- matrix(data=1, nrow=1, ncol=1) 
     }
     
     if (num_W > 1) {
@@ -100,21 +113,39 @@ GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=N
     	sig_mat_WW[upper.tri(sig_mat_WW)] <- cov_W
     	sig_mat_WW <- sig_mat_WW + t(sig_mat_WW)
     	diag(sig_mat_WW) <- 1
-    } else {
+    } else if (num_W == 0) {      # If no W, then return NULL for sig_mat_WW.
+      sig_mat_WW <- NULL
+    } else if (num_W == 1) {
     	sig_mat_WW <- matrix(data=1, nrow=1, ncol=1)
     }
    
-    # Now put it all together
+    # Now put it all together.
+    # Top left 3x3 always there.
     sig_mat_total <- matrix(data=NA, nrow=(3+num_Z+num_W), ncol=(3+num_Z+num_W))
     sig_mat_total[1:3, 1:3] <- sig_mat_GE
-    sig_mat_total[4:(3+num_Z), 1:3] <- sig_mat_Z_column
-    sig_mat_total[1:3, 4:(3+num_Z)] <- t(sig_mat_Z_column)
-    sig_mat_total[(4+num_Z):(3+num_Z+num_W), 1:3] <- sig_mat_W_column
-    sig_mat_total[1:3, (4+num_Z):(3+num_Z+num_W)] <- t(sig_mat_W_column)
-    sig_mat_total[4:(3+num_Z), 4:(3+num_Z)] <- sig_mat_ZZ
-    sig_mat_total[(4+num_Z):(3+num_Z+num_W), (4+num_Z):(3+num_Z+num_W)] <- sig_mat_WW
-    sig_mat_total[4:(3+num_Z), (4+num_Z):(3+num_Z+num_W)] <- sig_mat_Z_W
-    sig_mat_total[(4+num_Z):(3+num_Z+num_W), 4:(3+num_Z)] <- t(sig_mat_Z_W)
+    
+    # If we have a Z
+    if (num_Z > 0) {
+      sig_mat_total[4:(3+num_Z), 1:3] <- sig_mat_Z_column
+      sig_mat_total[1:3, 4:(3+num_Z)] <- t(sig_mat_Z_column)
+      sig_mat_total[4:(3+num_Z), 4:(3+num_Z)] <- sig_mat_ZZ
+    }
+    
+    # If we have a W
+    if (num_W > 0) {
+      sig_mat_total[(4+num_Z):(3+num_Z+num_W), 1:3] <- sig_mat_W_column
+      sig_mat_total[1:3, (4+num_Z):(3+num_Z+num_W)] <- t(sig_mat_W_column)
+      sig_mat_total[(4+num_Z):(3+num_Z+num_W), (4+num_Z):(3+num_Z+num_W)] <- sig_mat_WW
+    }
+    
+    # If we have both Z and W
+    if (num_Z > 0 & num_W > 0)
+    {
+      sig_mat_total[4:(3+num_Z), (4+num_Z):(3+num_Z+num_W)] <- sig_mat_Z_W
+      sig_mat_total[(4+num_Z):(3+num_Z+num_W), 4:(3+num_Z)] <- t(sig_mat_Z_W)
+    }
+    
+    # Final sanity check that the building went correctly.
     if (!isSymmetric(sig_mat_total)) {stop("Problem building covariance matrix!")}
     
     # Now make sure we can actually generate data with this structure

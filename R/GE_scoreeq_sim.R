@@ -37,51 +37,99 @@ GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, prob_G, rho_l
 	# Need survival function
 	surv <- function(x) {1-pnorm(x)}
   	
-  	# Fill in our covariances.
-  	rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
-  	rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
+  # Fill in our covariances.
+  rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
+  rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
   	
-  	# Quantities necessary for calculating higher order moments
-  	w <- qnorm(1-prob_G)					
-    r_GE <- rho_GE / (2*dnorm(w))	
-    r_GZ <- rho_GZ / (2*dnorm(w))
-    r_GW <- rho_GW / (2*dnorm(w))
-    num_Z <- length(beta_list[[5]])
-  	num_W <- length(beta_list[[6]])
+  # Quantities necessary for calculating higher order moments
+  w <- qnorm(1-prob_G)					
+  r_GE <- rho_GE / (2*dnorm(w))	
+  r_GZ <- rho_GZ / (2*dnorm(w))
+  r_GW <- rho_GW / (2*dnorm(w))
    
-   	# Get the total covariance matrix (also some basic validity checks)
+   # Get the total covariance matrix (also some basic validity checks)
 	translated_inputs <- GE_translate_inputs(beta_list=beta_list, rho_list=rho_list, 
 									prob_G=prob_G, cov_Z=cov_Z, cov_W=cov_W)
 	sig_mat <- translated_inputs$sig_mat_total
 	sig_mat_ZZ <- translated_inputs$sig_mat_ZZ
 	sig_mat_WW <- translated_inputs$sig_mat_WW
+	
+	# Different from GE_bias_normal_squaredmis in that we need num_Z/num_W=0 if they don't exist.
+	if (is.null(sig_mat_ZZ)) {
+	  num_build_Z <- 0
+	} else {
+	  num_build_Z <- length(beta_list[[5]])
+	}
+  if (is.null(sig_mat_WW)) {
+    num_build_W <- 0
+  }	else {
+    num_build_W <- length(beta_list[[6]])
+  }
 
-
-	results <- matrix(data=NA, nrow=num_sims, ncol=(4+num_Z+num_W))
+	results <- matrix(data=NA, nrow=num_sims, ncol=(4+num_build_Z+num_build_W))
 	for(i in 1:num_sims)
 	{
 		# Sim covariates
-		sim_data <- mvtnorm::rmvnorm(n=num_sub, mean=c(rep(0,3+num_Z+num_W)), sigma=sig_mat)		
+		sim_data <- mvtnorm::rmvnorm(n=num_sub, mean=c(rep(0,3+num_build_Z+num_build_W)), 
+		                    sigma=sig_mat)		
 		snp1 <- as.numeric(sim_data[,1]>w)
 		snp2 <- as.numeric(sim_data[,2]>w)
 		G <- snp1 + snp2 - 2*prob_G
 		E <- sim_data[,3]
-		Z <- sim_data[,4:(3+num_Z)]
-		W <- sim_data[,(4+num_Z):(3+num_Z+num_W)]
+		
+		# Build the design matrix depending on if Z and M/W exist.
+		if (num_build_Z > 0) { 
+		  Z <- sim_data[,4:(3+num_build_Z)] 
+		  if (num_build_W > 0)  {         # Normal
+		    W <- sim_data[,(4+num_build_Z):(3+num_build_Z+num_build_W)]
+		    d_right <- cbind(1, G, E^2, G*E^2, Z, W^2)
+		    d_wrong <- cbind(1, G, E, G*E, Z, W)
+		  } else if (num_build_W == 0) {
+		    d_right <- cbind(1, G, E^2, G*E^2, Z)
+		    d_wrong <- cbind(1, G, E, G*E, Z)
+		  }
+		} else if (num_build_Z == 0) {
+		  if (num_build_W > 0)  {         
+		    W <- sim_data[,(4+num_build_Z):(3+num_build_Z+num_build_W)]
+		    d_right <- cbind(1, G, E^2, G*E^2, W^2)
+		    d_wrong <- cbind(1, G, E, G*E, W)
+		  } else if (num_build_W == 0) {          # No other covariates in model
+		    d_right <- cbind(1, G, E^2, G*E^2)
+		    d_wrong <- cbind(1, G, E, G*E)
+		  }
+		}
+		
+		# Remove 0s from beta vector
+		true_beta <- beta_list
+		if (num_build_Z == 0 & num_build_W == 0) {
+		  true_beta <- true_beta[-c(5,6)]
+		} else if (num_build_Z == 0 & num_build_W != 0) {
+		  true_beta <- true_beta[-5]
+		} else if (num_build_Z != 0 & num_build_W == 0) {
+		  true_beta <- true_beta[-6]
+		}
 
-		# Sim outcome
-		d_right <- cbind(1, G, E^2, G*E^2, Z, W^2)
-		d_wrong <- cbind(1, G, E, G*E, Z, W)
-		Y <- d_right %*% unlist(beta_list) + rnorm(num_sub)
+		Y <- d_right %*% unlist(true_beta) + rnorm(num_sub)
 		
 		# Solve for beta_hat
 		b_hat <- solve(t(d_wrong) %*% d_wrong) %*% t(d_wrong) %*% Y
-		results[i,] <- b_hat
+		results[i, 1:length(b_hat)] <- b_hat
 		
 		# Checkpoint
 		if (i%%1000 == 0) {cat(i, "done\n")}
 	}
-	colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_Z',num_Z), rep('ALPHA_W',num_W))
+	
+	# Get the column names correct
+	if (num_build_Z == 0 & num_build_W == 0) {
+	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I')
+	} else if (num_build_Z == 0 & num_build_W != 0) {
+	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_W',num_build_W))
+	} else if (num_build_Z != 0 & num_build_W == 0) {
+	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_Z',num_build_Z))
+	} else {
+	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_Z',num_build_Z), rep('ALPHA_W',num_build_W))
+	}
+	
 	sim_alpha <- apply(results, 2, mean)
 	
 	return(sim_alpha)

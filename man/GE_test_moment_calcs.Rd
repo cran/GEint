@@ -5,13 +5,15 @@
 \title{GE_test_moment_calcs.R}
 \usage{
 GE_test_moment_calcs(beta_list, rho_list, prob_G, cov_Z = NULL,
-  cov_W = NULL, num_sub = 1e+06, test_threshold = 0.01)
+  cov_W = NULL, num_sub = 2e+06, test_threshold = 0.003)
 }
 \arguments{
 \item{rho_list}{A list of the 6 pairwise covariances between the
 covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
 (4) cov_GW (5) cov_EW (6) cov_ZW.  If Z and/or W include multiple covariates, then
-terms like cov_GZ should be a vector.}
+terms like cov_GZ should be a vector.  
+If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).}
 
 \item{prob_G}{Probability that each allele is equal to 1.  Since each SNP has
 two alleles, the expectation of G is 2*prob_G.}

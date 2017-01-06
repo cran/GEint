@@ -9,10 +9,13 @@ GE_bias(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
 \arguments{
 \item{beta_list}{A list of the effect sizes in the true model.
 Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
-If Z or M is a vector, then beta_Z and beta_M should be vectors.}
+If Z or M is a vector, then beta_Z and beta_M should be vectors.
+If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.}
 
 \item{cov_list}{A list of expectations (which happen to be covariances if all covariates
-are centered at 0) in the order specified by GE_enumerate_inputs().}
+are centered at 0) in the order specified by GE_enumerate_inputs().
+If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).}
 
 \item{cov_mat_list}{A list of matrices of expectations as specified by GE_enumerate_inputs().}
 

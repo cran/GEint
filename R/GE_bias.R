@@ -5,8 +5,11 @@
 #' @param beta_list A list of the effect sizes in the true model.
 #' Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
 #' If Z or M is a vector, then beta_Z and beta_M should be vectors.
+#' If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.
 #' @param cov_list A list of expectations (which happen to be covariances if all covariates
 #' are centered at 0) in the order specified by GE_enumerate_inputs().
+#' If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+#' if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).
 #' @param cov_mat_list  A list of matrices of expectations as specified by GE_enumerate_inputs().
 #' @param mu_list A list of means as specified by GE_enumerate_inputs().
 #' @param HOM_list A list of higher order moments as specified by GE_enumerate_inputs().
@@ -79,27 +82,41 @@ GE_bias <- function(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
   A <- (mu_GE * MU_GZ / mu_GG - MU_EZ) / (mu_EE - mu_GE^2/mu_GG)
   B <- (mu_GE * MU_GW / mu_GG - MU_EW) / (mu_EE - mu_GE^2/mu_GG)
   
-  O <- MU_Z%*%t(MU_Z) + MU_GZ%*%t(MU_GZ)/mu_GG - MU_ZZ - A %*% t(MU_EZ - MU_GZ*mu_GE/mu_GG)
+  # O will be set to 0 if no Z
+  if (is.null(MU_ZZ)) {
+    O <- 0
+    solve_O <- 0
+  } else {
+    O <- MU_Z%*%t(MU_Z) + MU_GZ%*%t(MU_GZ)/mu_GG - MU_ZZ - A %*% t(MU_EZ - MU_GZ*mu_GE/mu_GG)
+    solve_O <- solve(O)
+  }
+
+  C <- (B %*% t(MU_EZ - MU_GZ*mu_GE/mu_GG) - MU_W%*%t(MU_Z) - MU_GW%*%t(MU_GZ)/mu_GG + MU_WZ) %*% solve_O
   
-  C <- (B %*% t(MU_EZ - MU_GZ*mu_GE/mu_GG) - MU_W%*%t(MU_Z) - MU_GW%*%t(MU_GZ)/mu_GG + MU_WZ) %*% solve(O)
-  
-  Q <- MU_W%*%t(MU_W) + MU_GW%*%t(MU_GW)/mu_GG - MU_WW + B %*% t(MU_GW*mu_GE/mu_GG - MU_EW) + 
-    C %*% ( MU_Z%*%t(MU_W) + MU_GZ%*%t(MU_GW)/mu_GG - MU_ZW + A %*% t(MU_GW*mu_GE/mu_GG - MU_EW) )
+  # Q will be 0 if no W
+  if ( is.null(MU_WW) ) {
+    Q <- 0
+    solve_Q <- 0
+  } else {
+    Q <- MU_W%*%t(MU_W) + MU_GW%*%t(MU_GW)/mu_GG - MU_WW + B %*% t(MU_GW*mu_GE/mu_GG - MU_EW) + 
+      C %*% ( MU_Z%*%t(MU_W) + MU_GZ%*%t(MU_GW)/mu_GG - MU_ZW + A %*% t(MU_GW*mu_GE/mu_GG - MU_EW) )
+    solve_Q <- solve(Q)
+  }
   
   D <- (mu_GE * mu_GGE / mu_GG - mu_GEE) / (mu_EE - mu_GE^2 / mu_GG)
-  E <- t(MU_GEZ - MU_Z*mu_GE - MU_GZ*mu_GGE/mu_GG + D*(MU_EZ - MU_GZ*mu_GE/mu_GG)) %*% solve(O)
+  E <- t(MU_GEZ - MU_Z*mu_GE - MU_GZ*mu_GGE/mu_GG + D*(MU_EZ - MU_GZ*mu_GE/mu_GG)) %*% solve_O
   EFF <- ( t(MU_W*mu_GE + MU_GW*mu_GGE/mu_GG - MU_GEW + D*(MU_GW * mu_GE / mu_GG - MU_EW)) + 
-             E %*% (A %*% t(MU_GW*mu_GE/mu_GG - MU_EW) + MU_Z%*%t(MU_W) + MU_GZ%*%t(MU_GW)/mu_GG - MU_ZW) ) %*% solve(Q)
+             E %*% (A %*% t(MU_GW*mu_GE/mu_GG - MU_EW) + MU_Z%*%t(MU_W) + MU_GZ%*%t(MU_GW)/mu_GG - MU_ZW) ) %*% solve_Q
   
   
   # Solve for \alpha_I
   alpha_I_num <- beta_E * (-mu_f*mu_GE - mu_Gf*mu_GGE/mu_GG + mu_GEf + D * (mu_Ef - mu_Gf*mu_GE/mu_GG)) +
     beta_E * E %*% (-mu_f*MU_Z - MU_GZ*mu_Gf/mu_GG + MU_fZ + A * (mu_Ef - mu_Gf*mu_GE/mu_GG)) + 
-    beta_I * (-mu_Gf*mu_GE - mu_GGh*mu_GGE/mu_GG + mu_GGEh + D * (mu_GEh - mu_GGh*mu_GE/mu_GG)) + 
-    beta_I * E %*% (-mu_Gh*MU_Z - MU_GZ*mu_GGh/mu_GG + A * (mu_GEh - mu_GGh*mu_GE/mu_GG)) + 
+    beta_I * (-mu_Gh*mu_GE - mu_GGh*mu_GGE/mu_GG + mu_GGEh + D * (mu_GEh - mu_GGh*mu_GE/mu_GG)) + 
+    beta_I * E %*% (MU_GhZ -mu_Gh*MU_Z - MU_GZ*mu_GGh/mu_GG + A * (mu_GEh - mu_GGh*mu_GE/mu_GG)) + 
     t(MU_GEM - MU_M*mu_GE - MU_GM*mu_GGE/mu_GG + D * (MU_EM - MU_GM*mu_GE/mu_GG)) %*% BETA_M + 
     E %*% (A %*% t(MU_EM - MU_GM*mu_GE/mu_GG) - MU_Z%*%t(MU_M) - MU_GZ%*%t(MU_GM)/mu_GG + MU_ZM) %*% BETA_M - 
-    beta_E * EFF %*% (-mu_f*MU_W - MU_GW*mu_Gf/mu_GG + MU_fW + B %*% as.matrix(mu_GEf - mu_GGh*mu_GE/mu_GG)) - 
+    beta_E * EFF %*% (-mu_f*MU_W - MU_GW*mu_Gf/mu_GG + MU_fW + B %*% as.matrix(mu_Ef - mu_Gf*mu_GE/mu_GG)) - 
     beta_E * EFF %*% C %*% (-mu_f*MU_Z - mu_Gf*MU_GZ/mu_GG + MU_fZ + A %*% as.matrix(mu_Ef - mu_Gf*mu_GE/mu_GG)) - 
     beta_I * EFF %*% (-mu_Gh*MU_W - MU_GW*mu_GGh/mu_GG + MU_GhW + B %*% as.matrix(mu_GEh - mu_GGh*mu_GE/mu_GG)) -
     beta_I * EFF %*% C %*% (MU_GhZ - MU_Z*mu_Gh - MU_GZ*mu_GGh/mu_GG + A %*% as.matrix(mu_GEh - mu_GGh*mu_GE/mu_GG)) - 
@@ -109,7 +126,7 @@ GE_bias <- function(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
   alpha_I_denom <- EFF %*% ( MU_W*mu_GE + MU_GW*mu_GGE/mu_GG - MU_GEW + B * (mu_GGE*mu_GE/mu_GG - mu_GEE) ) +
     EFF %*% C %*% ( MU_Z*mu_GE + MU_GZ*mu_GGE/mu_GG - MU_GEZ + A * (mu_GGE*mu_GE/mu_GG - mu_GEE) ) - 
     ( mu_GE^2 + mu_GGE^2/mu_GG - mu_GGEE + D * (mu_GGE*mu_GE/mu_GG - mu_GEE) ) - 
-    E %*% ( MU_Z*mu_GE + MU_GZ*mu_GGE/mu_GG + A * (mu_GGE*mu_GE/mu_GG - mu_GEE) )
+    E %*% ( MU_Z*mu_GE + MU_GZ*mu_GGE/mu_GG - MU_GEZ + A * (mu_GGE*mu_GE/mu_GG - mu_GEE) )
   
   alpha_I <- alpha_I_num / alpha_I_denom
   
@@ -122,7 +139,7 @@ GE_bias <- function(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
     alpha_I * (MU_W*mu_GE + MU_GW*mu_GGE/mu_GG - MU_GEW + B * (mu_GGE*mu_GE/mu_GG - mu_GEE)) + 
     as.numeric(alpha_I) * C %*% (MU_Z*mu_GE + MU_GZ*mu_GGE/mu_GG - MU_GEZ + A*(mu_GGE*mu_GE/mu_GG - mu_GEE))
   
-  ALPHA_W <- - solve(Q) %*% R
+  ALPHA_W <- - solve_Q %*% R
   
   P <- beta_E * (-MU_Z*mu_f - MU_GZ*mu_Gf/mu_GG + MU_fZ + A * (mu_Ef - mu_Gf*mu_GE/mu_GG)) + 
     beta_I * (MU_GhZ - MU_Z*mu_Gh - MU_GZ*mu_GGh/mu_GG + A * (mu_GEh - mu_GGh*mu_GE/mu_GG)) + 
@@ -130,8 +147,8 @@ GE_bias <- function(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
     ( A %*% t(MU_EM - MU_GM*mu_GE/mu_GG) - MU_Z%*%t(MU_M) - MU_GZ%*%t(MU_GM)/mu_GG + MU_ZM) %*% BETA_M + 
     ( A %*% t(MU_GW*mu_GE/mu_GG - MU_EW) + MU_Z%*%t(MU_W) + MU_GZ%*%t(MU_GW)/mu_GG - MU_ZW) %*% ALPHA_W
   
-  Bz_Az <- solve(O) %*% P
-  ALPHA_Z <- BETA_Z - solve(O) %*% P
+  Bz_Az <- solve_O %*% P
+  ALPHA_Z <- BETA_Z - solve_O %*% P
   
   alpha_E <- ( beta_E * (mu_Ef - mu_Gf*mu_GE/mu_GG) + beta_I * (mu_GEh - mu_GGh*mu_GE/mu_GG) +  
                  alpha_I * (mu_GGE*mu_GE/mu_GG - mu_GEE) + t(MU_EZ - MU_GZ*mu_GE/mu_GG) %*% Bz_Az + 

@@ -6,8 +6,11 @@
 #' @param beta_list A list of the effect sizes in the true model.
 #' Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
 #' If Z or M is a vector, then beta_Z and beta_M should be vectors.
+#' If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.
 #' @param cov_list A list of expectations (which happen to be covariances if all covariates
 #' are centered at 0) in the order specified by GE_enumerate_inputs().
+#' If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+#' set cov(EZ) = 0 and cov(ZW) = 0.
 #' @param cov_mat_list  A list of matrices of expectations as specified by GE_enumerate_inputs().
 #' @param mu_list A list of means as specified by GE_enumerate_inputs().
 #' @param HOM_list A list of higher order moments as specified by GE_enumerate_inputs().
@@ -58,10 +61,10 @@ GE_nleqslv <- function(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
 	
 	MU_ZZ <- cov_mat_list[[1]]
  	MU_WW <- cov_mat_list[[2]]
-  	MU_ZW <- cov_mat_list[[3]]
-  	MU_WZ <- cov_mat_list[[4]]
-  	MU_ZM <- cov_mat_list[[5]]	
-  	MU_WM <- cov_mat_list[[6]]		
+	MU_ZW <- cov_mat_list[[3]]
+  MU_WZ <- cov_mat_list[[4]]
+  MU_ZM <- cov_mat_list[[5]]	
+  MU_WM <- cov_mat_list[[6]]		
 	
 	mu_GGE <- HOM_list[[1]]
 	mu_GGh <- HOM_list[[2]]
@@ -79,41 +82,137 @@ GE_nleqslv <- function(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
 	
 	#################################################################			
 	# Define the set of score equations we will be solving
-	score_eqs <- function(x)
+	# Different score equations for no Z and no M/W
+	score_eqs_all <- function(x)
 	{
-		alpha_0 <- x[1]
-		alpha_G <- x[2]
-		alpha_E <- x[3]
-		alpha_I <- x[4]
-		ALPHA_Z <- x[5:(4+num_Z)]
-		ALPHA_W <- x[(5+num_Z):(4+num_Z+num_W)]
-		y <- numeric(4+num_Z+num_W)
-		y[1] = alpha_0 + alpha_I*mu_GE + t(MU_Z) %*% ALPHA_Z + t(MU_W) %*% ALPHA_W - beta_0 - 
-			beta_E*mu_f - beta_I*mu_Gh - t(MU_Z) %*% BETA_Z - t(MU_M) %*% BETA_M
+	 	alpha_0 <- x[1]
+	 	alpha_G <- x[2]
+	 	alpha_E <- x[3]
+	 	alpha_I <- x[4]
+	 	ALPHA_Z <- x[5:(4+num_Z)]
+	 	ALPHA_W <- x[(5+num_Z):(4+num_Z+num_W)]
+	 	y <- numeric(4+num_Z+num_W)
+	 	y[1] = alpha_0 + alpha_I*mu_GE + t(MU_Z) %*% ALPHA_Z + t(MU_W) %*% ALPHA_W - beta_0 - 
+	  	beta_E*mu_f - beta_I*mu_Gh - t(MU_Z) %*% BETA_Z - t(MU_M) %*% BETA_M
 	
-		y[2] = alpha_G*mu_GG + alpha_E*mu_GE + alpha_I*mu_GGE + t(MU_GZ) %*% ALPHA_Z + t(MU_GW) %*% ALPHA_W - 
-			beta_G*mu_GG - beta_E*mu_Gf - beta_I*mu_GGh - t(MU_GZ) %*% BETA_Z - t(MU_GM) %*% BETA_M
+	  y[2] = alpha_G*mu_GG + alpha_E*mu_GE + alpha_I*mu_GGE + t(MU_GZ) %*% ALPHA_Z + t(MU_GW) %*% ALPHA_W - 
+	  	beta_G*mu_GG - beta_E*mu_Gf - beta_I*mu_GGh - t(MU_GZ) %*% BETA_Z - t(MU_GM) %*% BETA_M
 	
 		y[3] = alpha_G*mu_GE + alpha_E*mu_EE + alpha_I*mu_GEE + t(MU_EZ) %*% ALPHA_Z + t(MU_EW) %*% ALPHA_W - 
 			beta_G*mu_GE - beta_E*mu_Ef - beta_I*mu_GEh - t(MU_EZ) %*% BETA_Z - t(MU_EM) %*% BETA_M
 	
 		y[4] = alpha_0*mu_GE + alpha_G*mu_GGE + alpha_E*mu_GEE + alpha_I*mu_GGEE + t(MU_GEZ) %*% ALPHA_Z + 
 			t(MU_GEW) %*% ALPHA_W - beta_0*mu_GE - beta_G*mu_GGE - beta_E*mu_GEf - beta_I*mu_GGEh -
-			t(MU_GEZ) %*% BETA_Z - t(MU_GEM) %*% BETA_M
+	  	t(MU_GEZ) %*% BETA_Z - t(MU_GEM) %*% BETA_M
 	
-		y[5:(4+num_Z)] = alpha_0*MU_Z + alpha_G*MU_GZ + alpha_E*MU_EZ + alpha_I*MU_GEZ + MU_ZZ %*% ALPHA_Z + 
-			MU_ZW %*% ALPHA_W - beta_0*MU_Z - beta_G*MU_GZ - beta_E*MU_fZ - beta_I*MU_GhZ - 
-			MU_ZZ %*% BETA_Z - MU_ZM %*% BETA_M
+	  y[5:(4+num_Z)] = alpha_0*MU_Z + alpha_G*MU_GZ + alpha_E*MU_EZ + alpha_I*MU_GEZ + MU_ZZ %*% ALPHA_Z + 
+		  MU_ZW %*% ALPHA_W - beta_0*MU_Z - beta_G*MU_GZ - beta_E*MU_fZ - beta_I*MU_GhZ - 
+		  MU_ZZ %*% BETA_Z - MU_ZM %*% BETA_M
 	
-		y[(5+num_Z):(4+num_Z+num_W)] = alpha_0*MU_W + alpha_G*MU_GW + alpha_E*MU_EW + alpha_I*MU_GEW + MU_WZ %*% ALPHA_Z + 
-			MU_WW %*% ALPHA_W - beta_0*MU_W - beta_G*MU_GW - beta_E*MU_fW - beta_I*MU_GhW -
-			MU_WZ %*% BETA_Z - MU_WM %*% BETA_M
+	  y[(5+num_Z):(4+num_Z+num_W)] = alpha_0*MU_W + alpha_G*MU_GW + alpha_E*MU_EW + alpha_I*MU_GEW + MU_WZ %*% ALPHA_Z + 
+		  MU_WW %*% ALPHA_W - beta_0*MU_W - beta_G*MU_GW - beta_E*MU_fW - beta_I*MU_GhW -
+		  MU_WZ %*% BETA_Z - MU_WM %*% BETA_M
 	
 		y
 	}
-	
 
-	solved_scoreeqs = nleqslv::nleqslv(x=c(0,0,0,0, rep(0, (num_Z+num_W))), fn=score_eqs)
+	# Score equations no W
+	score_eqs_no_W <- function(x)
+	{
+	  alpha_0 <- x[1]
+	  alpha_G <- x[2]
+	  alpha_E <- x[3]
+	  alpha_I <- x[4]
+	  ALPHA_Z <- x[5:(4+num_Z)]
+	  ALPHA_W <- 0
+	  y <- numeric(4+num_Z)
+	  y[1] = alpha_0 + alpha_I*mu_GE + t(MU_Z) %*% ALPHA_Z + t(MU_W) %*% ALPHA_W - beta_0 - 
+	      beta_E*mu_f - beta_I*mu_Gh - t(MU_Z) %*% BETA_Z - t(MU_M) %*% BETA_M
+	    
+	  y[2] = alpha_G*mu_GG + alpha_E*mu_GE + alpha_I*mu_GGE + t(MU_GZ) %*% ALPHA_Z + t(MU_GW) %*% ALPHA_W - 
+	      beta_G*mu_GG - beta_E*mu_Gf - beta_I*mu_GGh - t(MU_GZ) %*% BETA_Z - t(MU_GM) %*% BETA_M
+	    
+	  y[3] = alpha_G*mu_GE + alpha_E*mu_EE + alpha_I*mu_GEE + t(MU_EZ) %*% ALPHA_Z + t(MU_EW) %*% ALPHA_W - 
+	      beta_G*mu_GE - beta_E*mu_Ef - beta_I*mu_GEh - t(MU_EZ) %*% BETA_Z - t(MU_EM) %*% BETA_M
+	    
+	  y[4] = alpha_0*mu_GE + alpha_G*mu_GGE + alpha_E*mu_GEE + alpha_I*mu_GGEE + t(MU_GEZ) %*% ALPHA_Z + 
+	      t(MU_GEW) %*% ALPHA_W - beta_0*mu_GE - beta_G*mu_GGE - beta_E*mu_GEf - beta_I*mu_GGEh -
+	      t(MU_GEZ) %*% BETA_Z - t(MU_GEM) %*% BETA_M
+	    
+	  y[5:(4+num_Z)] = alpha_0*MU_Z + alpha_G*MU_GZ + alpha_E*MU_EZ + alpha_I*MU_GEZ + MU_ZZ %*% ALPHA_Z + 
+	      MU_ZW %*% ALPHA_W - beta_0*MU_Z - beta_G*MU_GZ - beta_E*MU_fZ - beta_I*MU_GhZ - 
+	      MU_ZZ %*% BETA_Z - MU_ZM %*% BETA_M
+	    
+	  y
+	}
+
+	# Score equations no Z
+	score_eqs_no_Z <- function(x)
+	{
+	  alpha_0 <- x[1]
+	  alpha_G <- x[2]
+	  alpha_E <- x[3]
+	  alpha_I <- x[4]
+	  ALPHA_Z <- 0
+	  ALPHA_W <- x[(5):(4+num_W)]
+	  y <- numeric(4+num_W)
+	  y[1] = alpha_0 + alpha_I*mu_GE + t(MU_Z) %*% ALPHA_Z + t(MU_W) %*% ALPHA_W - beta_0 - 
+	      beta_E*mu_f - beta_I*mu_Gh - t(MU_Z) %*% BETA_Z - t(MU_M) %*% BETA_M
+	    
+	  y[2] = alpha_G*mu_GG + alpha_E*mu_GE + alpha_I*mu_GGE + t(MU_GZ) %*% ALPHA_Z + t(MU_GW) %*% ALPHA_W - 
+	      beta_G*mu_GG - beta_E*mu_Gf - beta_I*mu_GGh - t(MU_GZ) %*% BETA_Z - t(MU_GM) %*% BETA_M
+	    
+	  y[3] = alpha_G*mu_GE + alpha_E*mu_EE + alpha_I*mu_GEE + t(MU_EZ) %*% ALPHA_Z + t(MU_EW) %*% ALPHA_W - 
+	      beta_G*mu_GE - beta_E*mu_Ef - beta_I*mu_GEh - t(MU_EZ) %*% BETA_Z - t(MU_EM) %*% BETA_M
+	    
+	  y[4] = alpha_0*mu_GE + alpha_G*mu_GGE + alpha_E*mu_GEE + alpha_I*mu_GGEE + t(MU_GEZ) %*% ALPHA_Z + 
+	      t(MU_GEW) %*% ALPHA_W - beta_0*mu_GE - beta_G*mu_GGE - beta_E*mu_GEf - beta_I*mu_GGEh -
+	      t(MU_GEZ) %*% BETA_Z - t(MU_GEM) %*% BETA_M
+	    
+	  y[(5):(4+num_W)] = alpha_0*MU_W + alpha_G*MU_GW + alpha_E*MU_EW + alpha_I*MU_GEW + MU_WZ %*% ALPHA_Z + 
+	      MU_WW %*% ALPHA_W - beta_0*MU_W - beta_G*MU_GW - beta_E*MU_fW - beta_I*MU_GhW -
+	      MU_WZ %*% BETA_Z - MU_WM %*% BETA_M
+	    
+    y
+	}
+
+	# Score equations no Z and no W
+	score_eqs_no_Z_no_W <- function(x)
+	{
+    alpha_0 <- x[1]
+    alpha_G <- x[2]
+    alpha_E <- x[3]
+	  alpha_I <- x[4]
+	  ALPHA_Z <- 0
+	  ALPHA_W <- 0
+    y <- numeric(4)
+	  y[1] = alpha_0 + alpha_I*mu_GE + t(MU_Z) %*% ALPHA_Z + t(MU_W) %*% ALPHA_W - beta_0 - 
+	      beta_E*mu_f - beta_I*mu_Gh - t(MU_Z) %*% BETA_Z - t(MU_M) %*% BETA_M
+	    
+	  y[2] = alpha_G*mu_GG + alpha_E*mu_GE + alpha_I*mu_GGE + t(MU_GZ) %*% ALPHA_Z + t(MU_GW) %*% ALPHA_W - 
+	      beta_G*mu_GG - beta_E*mu_Gf - beta_I*mu_GGh - t(MU_GZ) %*% BETA_Z - t(MU_GM) %*% BETA_M
+	    
+	  y[3] = alpha_G*mu_GE + alpha_E*mu_EE + alpha_I*mu_GEE + t(MU_EZ) %*% ALPHA_Z + t(MU_EW) %*% ALPHA_W - 
+	      beta_G*mu_GE - beta_E*mu_Ef - beta_I*mu_GEh - t(MU_EZ) %*% BETA_Z - t(MU_EM) %*% BETA_M
+	    
+    y[4] = alpha_0*mu_GE + alpha_G*mu_GGE + alpha_E*mu_GEE + alpha_I*mu_GGEE + t(MU_GEZ) %*% ALPHA_Z + 
+	      t(MU_GEW) %*% ALPHA_W - beta_0*mu_GE - beta_G*mu_GGE - beta_E*mu_GEf - beta_I*mu_GGEh -
+	      t(MU_GEZ) %*% BETA_Z - t(MU_GEM) %*% BETA_M
+
+	    y
+	}
+	
+	# Decide which score equation to use
+	if ( !is.null(MU_ZZ) & !is.null(MU_WW) ) {
+	  solved_scoreeqs = nleqslv::nleqslv(x=c(0,0,0,0, rep(0, (num_Z+num_W))), fn=score_eqs_all)
+	} else if ( !is.null(MU_ZZ) & is.null(MU_WW) ) {
+	  solved_scoreeqs = nleqslv::nleqslv(x=c(0,0,0,0, rep(0, num_Z)), fn=score_eqs_no_W)
+	} else if ( is.null(MU_ZZ) & !is.null(MU_WW) ) {
+	  solved_scoreeqs = nleqslv::nleqslv(x=c(0,0,0,0, rep(0, num_W)), fn=score_eqs_no_Z)
+	} else if ( is.null(MU_ZZ) & is.null(MU_WW) ) {
+	  solved_scoreeqs = nleqslv::nleqslv(x=c(0,0,0,0), fn=score_eqs_no_Z_no_W)
+	}
+	
 	return(solved_scoreeqs)
 }
 
