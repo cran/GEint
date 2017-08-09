@@ -8,80 +8,83 @@
 #' @param num_sub The number of subjects to generate in every simulation, we suggest 2000.
 #' @param beta_list A list of the effect sizes in the true model.
 #' Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
-#' If Z or M is a vector, then beta_Z and beta_M should be vectors.
-#' @param rho_list A list of the 6 pairwise covariances between the
-#' covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
-#' (4) cov_GW (5) cov_EW (6) cov_ZW.
-#' Again if Z or W are vectors then terms like cov_GZ should be vectors (in the order
-#' cov(G,Z_1),...,cov(G,Z_p)) where Z is of dimension p, and similarly for W.
-#' If Z or M are vectors, then cov_ZW should be a vector in the order (cov(Z_1,W_1),...,cov(Z_1,W_q),
-#' cov(Z_2,W_1),........,cov(Z_p,W_q) where Z is a vector of length p and W is a vector of length q.
-#' @param cov_Z Only used if Z is a vector, gives the covariance matrix of Z (remember by assumption
-#' Z has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-#' of the vector.
-#' @param cov_W Only used if W is a vector, gives the covariance matrix of W (remember by assumption
-#' W has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-#' of the vector.
+#' If G or Z or M is a vector, then beta_G/beta_Z/beta_M should be vectors.
+#' If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.
+#' @param rho_list A list of expectations (which happen to be covariances if all covariates
+#' are centered at 0) in the order specified by GE_enumerate_inputs().
+#' If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+#' if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).
+#' If describing expectations relating two vectors, i.e. Z includes two covariates and W
+#' includes three covariates, sort by the first term and then the second. Thus in the 
+#' example, the first three terms of cov(ZW) are cov(Z_1,W_1),cov(Z_1,W_2), cov(Z_1,W_3), 
+#' and the last three terms are cov(Z_3,W_1), cov(Z_3,W_2), cov(Z_3,W_3).
 #' @param prob_G Probability that each allele is equal to 1.  Since each SNP has
-#' two alleles, the expectation of G is 2*prob_G.
+#' two alleles, the expectation of G is 2*prob_G. Should be a d*1 vector.
+#' @param cov_Z Should be a matrix equal to cov(Z) or NULL if no Z. 
+#' @param cov_W Should be a matrix equal to cov(W) or NULL if no W. 
+#' @param corr_G Should be a matrix giving the *pairwise correlations* between each SNP
+#' in the set, or NULL. Must be specified if G is a vector.  For example, the [2,3] element
+#' of the matrix would be the pairwise correlation between SNP2 and SNP3.
 #'
 #' @return A list of the fitted values alpha
 #'
 #' @export
 #' @examples 
-#' GE_scoreeq_sim( num_sims=10, beta_list=as.list(runif(n=6, min=0, max=1)), 
-#'							rho_list=as.list(rep(0.3,6)), prob_G=0.3)
+#' GE_scoreeq_sim( num_sims=10, num_sub=1000, beta_list=as.list(runif(n=6, min=0, max=1)), 
+#' rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 
-GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, prob_G, rho_list, cov_Z=NULL, cov_W=NULL)
+GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL, corr_G=NULL)
 {
-	# Need survival function
-	surv <- function(x) {1-pnorm(x)}
-  	
-  # Fill in our covariances.
+  # Need survival function.
+  surv <- function(x) {1-pnorm(x)}
+  
+  # For thresholding
+  w_vec <- qnorm(1-prob_G)
+  
+  # Record some initial quantities
   rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
   rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
-  	
-  # Quantities necessary for calculating higher order moments
-  w <- qnorm(1-prob_G)					
-  r_GE <- rho_GE / (2*dnorm(w))	
-  r_GZ <- rho_GZ / (2*dnorm(w))
-  r_GW <- rho_GW / (2*dnorm(w))
-   
-   # Get the total covariance matrix (also some basic validity checks)
-	translated_inputs <- GE_translate_inputs(beta_list=beta_list, rho_list=rho_list, 
-									prob_G=prob_G, cov_Z=cov_Z, cov_W=cov_W)
-	sig_mat <- translated_inputs$sig_mat_total
-	sig_mat_ZZ <- translated_inputs$sig_mat_ZZ
-	sig_mat_WW <- translated_inputs$sig_mat_WW
-	
-	# Different from GE_bias_normal_squaredmis in that we need num_Z/num_W=0 if they don't exist.
-	if (is.null(sig_mat_ZZ)) {
-	  num_build_Z <- 0
-	} else {
-	  num_build_Z <- length(beta_list[[5]])
-	}
-  if (is.null(sig_mat_WW)) {
-    num_build_W <- 0
-  }	else {
-    num_build_W <- length(beta_list[[6]])
-  }
 
-	results <- matrix(data=NA, nrow=num_sims, ncol=(4+num_build_Z+num_build_W))
+  beta_0 <- beta_list[[1]]; beta_G <- beta_list[[2]]; beta_E <- beta_list[[3]]
+  beta_I <- beta_list[[4]]; beta_Z <- beta_list[[5]]; beta_M <- beta_list[[6]]
+  
+  # How long are they
+  num_G <- length(beta_list[[2]])
+  num_build_W <- length(beta_list[[6]])
+  if (num_build_W == 1 & beta_list[[6]][1] == 0) {
+    num_build_W = 0
+  } 
+  num_build_Z <- length(beta_list[[5]])
+  if (num_build_Z == 1 & beta_list[[5]][1] == 0) {
+    num_build_Z = 0
+  }
+  
+  # Some error checking, make sure the covariance matrix is ok
+  translated_inputs <- GE_translate_inputs(beta_list=beta_list, rho_list=rho_list, 
+                                               prob_G=prob_G, cov_Z=cov_Z, cov_W=cov_W, corr_G=corr_G)
+  sig_mat <- translated_inputs$sig_mat_total
+
+  # Loop through simulations
+	results <- matrix(data=NA, nrow=num_sims, ncol=(2+2*num_G+num_build_Z+num_build_W))
 	for(i in 1:num_sims)
 	{
 		# Sim covariates
-		sim_data <- mvtnorm::rmvnorm(n=num_sub, mean=c(rep(0,3+num_build_Z+num_build_W)), 
-		                    sigma=sig_mat)		
-		snp1 <- as.numeric(sim_data[,1]>w)
-		snp2 <- as.numeric(sim_data[,2]>w)
-		G <- snp1 + snp2 - 2*prob_G
-		E <- sim_data[,3]
+		sim_data <- mvtnorm::rmvnorm(n=num_sub, mean=c(rep(0,1+2*num_G+num_build_Z+num_build_W)), 
+		                    sigma=sig_mat)	
+		
+		G <- matrix(data=NA, nrow=num_sub, ncol=num_G)
+		for (j in 1:num_G) {
+		  snp1 <- as.numeric(sim_data[, (j*2-1)] > w_vec[j])
+		  snp2 <- as.numeric(sim_data[, (j*2)] > w_vec[j])
+		  G[, j] <- snp1 + snp2 - 2*prob_G[j]
+		}
+		E <- sim_data[, (2*num_G + 1)]
 		
 		# Build the design matrix depending on if Z and M/W exist.
 		if (num_build_Z > 0) { 
-		  Z <- sim_data[,4:(3+num_build_Z)] 
+		  Z <- sim_data[,(2*num_G+2):(2*num_G+1+num_build_Z)] 
 		  if (num_build_W > 0)  {         # Normal
-		    W <- sim_data[,(4+num_build_Z):(3+num_build_Z+num_build_W)]
+		    W <- sim_data[, (2*num_G+2+num_build_Z):(2*num_G+1+num_build_Z+num_build_W)]
 		    d_right <- cbind(1, G, E^2, G*E^2, Z, W^2)
 		    d_wrong <- cbind(1, G, E, G*E, Z, W)
 		  } else if (num_build_W == 0) {
@@ -90,7 +93,7 @@ GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, prob_G, rho_l
 		  }
 		} else if (num_build_Z == 0) {
 		  if (num_build_W > 0)  {         
-		    W <- sim_data[,(4+num_build_Z):(3+num_build_Z+num_build_W)]
+		    W <- sim_data[,(2*num_G+2):(2*num_G+1+num_build_W)]
 		    d_right <- cbind(1, G, E^2, G*E^2, W^2)
 		    d_wrong <- cbind(1, G, E, G*E, W)
 		  } else if (num_build_W == 0) {          # No other covariates in model
@@ -99,7 +102,7 @@ GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, prob_G, rho_l
 		  }
 		}
 		
-		# Remove 0s from beta vector
+		# Remove 0s from beta_list (it's a list)
 		true_beta <- beta_list
 		if (num_build_Z == 0 & num_build_W == 0) {
 		  true_beta <- true_beta[-c(5,6)]
@@ -109,6 +112,7 @@ GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, prob_G, rho_l
 		  true_beta <- true_beta[-6]
 		}
 
+		# Simulate outcome
 		Y <- d_right %*% unlist(true_beta) + rnorm(num_sub)
 		
 		# Solve for beta_hat
@@ -120,16 +124,11 @@ GE_scoreeq_sim <- function(num_sims=5000, num_sub=2000, beta_list, prob_G, rho_l
 	}
 	
 	# Get the column names correct
-	if (num_build_Z == 0 & num_build_W == 0) {
-	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I')
-	} else if (num_build_Z == 0 & num_build_W != 0) {
-	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_W',num_build_W))
-	} else if (num_build_Z != 0 & num_build_W == 0) {
-	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_Z',num_build_Z))
-	} else {
-	  colnames(results) <- c('alpha_0', 'alpha_G', 'alpha_E', 'alpha_I', rep('ALPHA_Z',num_build_Z), rep('ALPHA_W',num_build_W))
-	}
+	colnames(results) <- c('alpha_0', rep('alpha_G', num_G), 'alpha_E', 
+	                       rep('alpha_I', num_G), rep('alpha_Z', num_build_Z), 
+	                       rep('alpha_W', num_build_W)) 
 	
+	# Get the simulated alphas
 	sim_alpha <- apply(results, 2, mean)
 	
 	return(sim_alpha)

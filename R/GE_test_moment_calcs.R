@@ -5,24 +5,27 @@
 #' some calculations appear to be incorrect.  If receive warning messages, run again, and
 #' if still receive the same warning messages, something may be wrong.
 #'
-#' @param rho_list A list of the 6 pairwise covariances between the
-#' covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
-#' (4) cov_GW (5) cov_EW (6) cov_ZW.  If Z and/or W include multiple covariates, then
-#' terms like cov_GZ should be a vector.  
+#' @param beta_list A list of the effect sizes in the true model.
+#' Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
+#' If G or Z or M is a vector, then beta_G/beta_Z/beta_M should be vectors.
+#' If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.
+#' @param rho_list A list of expectations (which happen to be covariances if all covariates
+#' are centered at 0) in the order specified by GE_enumerate_inputs().
 #' If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
 #' if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).
-#' @param cov_Z Only used if Z is a vector, gives the covariance matrix of Z (remember by assumption
-#' Z has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-#' of the vector. If Z or M are vectors, then cov_ZW should be a vector in the order
-#' (cov(Z_1,W_1),cov(Z_1,W_2),...,cov(Z_1,W_q),cov(Z_2,W_1),........,cov(Z_p,W_q) where Z is 
-#' a vector of length p and W is a vector of length q.
-#' @param cov_W Only used if W is a vector, gives the covariance matrix of W (remember by assumption
-#' W has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-#' of the vector.
+#' If describing expectations relating two vectors, i.e. Z includes two covariates and W
+#' includes three covariates, sort by the first term and then the second. Thus in the 
+#' example, the first three terms of cov(ZW) are cov(Z_1,W_1),cov(Z_1,W_2), cov(Z_1,W_3), 
+#' and the last three terms are cov(Z_3,W_1), cov(Z_3,W_2), cov(Z_3,W_3).
 #' @param prob_G Probability that each allele is equal to 1.  Since each SNP has
-#' two alleles, the expectation of G is 2*prob_G.
-#' @param num_sum Number of subjects to do the simulation with.
-#' @param test_threshold How much margin for error on tests?
+#' two alleles, the expectation of G is 2*prob_G. Should be a d*1 vector.
+#' @param cov_Z Should be a matrix equal to cov(Z) or NULL. Must be specified if Z is a vector.  
+#' @param cov_W Should be a matrix equal to cov(W) or NULL. Must be specified if W is a vector.  
+#' @param corr_G Should be a matrix giving the *pairwise correlations* between each SNP
+#' in the set, or NULL. Must be specified if G is a vector.  For example, the [2,3] element
+#' of the matrix would be the pairwise correlation between SNP2 and SNP3.
+#' @param num_sub Number of subjects to simulate/test with.  
+#' @param test_threshold How close does our simulated value have to be to the analytic value? 
 #'
 #' @return Nothing
 #'
@@ -30,404 +33,247 @@
 #' @keywords internal
 #' @examples 
 #' GE_test_moment_calcs(beta_list=as.list(runif(n=6, min=0, max=1)), 
-#'			rho_list=as.list(rep(0.3,6)), prob_G=0.3)
+#' rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 
-GE_test_moment_calcs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL, num_sub=2000000, test_threshold=0.003)
+GE_test_moment_calcs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL, num_sub=2000000, test_threshold=0.003, corr_G=NULL)
 {
-	  # Need survival function
-  	surv <- function(x) {1-pnorm(x)}
-  	
-  	# Fill in our covariances.
-  	rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
-  	rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
-  	
-  	# Quantities necessary for calculating higher order moments
-  	w <- qnorm(1-prob_G)					
-    r_GE <- rho_GE / (2*dnorm(w))	
-    r_GZ <- rho_GZ / (2*dnorm(w))
-    r_GW <- rho_GW / (2*dnorm(w))
-   
-   	# Get the total covariance matrix (also some basic validity checks)
-	  translated_inputs <- GE_translate_inputs(beta_list=beta_list, rho_list=rho_list, 
-									prob_G=prob_G, cov_Z=cov_Z, cov_W=cov_W)
-	  sig_mat <- translated_inputs$sig_mat_total
-	  sig_mat_ZZ <- translated_inputs$sig_mat_ZZ
-	  sig_mat_WW <- translated_inputs$sig_mat_WW
-									
-	  # Generate test data
-	  test_data <- mvtnorm::rmvnorm(n=num_sub, sigma=sig_mat)
-	
-	  # Get the individual components
-  	G1 <- as.numeric(test_data[,1] > w)
-  	G2 <- as.numeric(test_data[,2] > w)
-  	G <- G1 + G2 - 2*prob_G
-	  E <- test_data[,3]
-	  
-	  # Figure out how many Z and W we have.
-	  # Even if Z or M/W = 0 then we keep their number at 1 to facilitate ease of testing.
+    num_G <- length(beta_list[[2]])
 	  num_Z <- length(beta_list[[5]])
 	  num_W <- length(beta_list[[6]])
-	  # And how to build their covariate vectors.
-	  if (is.null(sig_mat_ZZ)) {
-	    num_build_Z <- 0            # Introduce this here just for building the covariate vectors 
-	    Z <- matrix(data=0, nrow=length(E), ncol=1)
-	  } else {
-	    Z <- as.matrix(test_data[,4:(3+num_Z)])
-	    num_build_Z <- num_Z
+    normal_squaredmis_results <- GE_bias_normal_squaredmis(beta_list=beta_list, 
+                                                               rho_list=rho_list, 
+                                                               prob_G=prob_G, 
+                                                               cov_Z=cov_Z, 
+                                                               cov_W=cov_W, 
+                                                               corr_G=corr_G)
+		# What we think the moments are
+    mu_list <- normal_squaredmis_results$mu_list
+    cov_list <- normal_squaredmis_results$cov_list
+    cov_mat_list <- normal_squaredmis_results$cov_mat_list
+    HOM_list <- normal_squaredmis_results$HOM_list
+    
+    # Fill in our covariances.
+    rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
+    rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
+    rho_ZZ <- cov_Z; rho_WW <- cov_W
+    
+    # The means
+	  mu_f <- mu_list[[1]]; mu_h <- mu_list[[2]]; mu_Z <- as.matrix(mu_list[[3]], ncol=1)
+	  mu_M <- as.matrix(mu_list[[4]], ncol=1); mu_W <- as.matrix(mu_list[[5]], ncol=1)
+	  
+	  # Some covariances
+	  mu_GE <- as.matrix(cov_list[[1]], ncol=1)
+	  mu_Gf <- as.matrix(cov_list[[2]], ncol=1)
+	  mu_Gh <- as.matrix(cov_list[[3]], ncol=1)
+	  mu_EE <- as.matrix(cov_list[[4]], ncol=1)
+	  mu_Ef <- as.matrix(cov_list[[5]], ncol=1)
+	  mu_EZ <- as.matrix(cov_list[[6]], ncol=1)
+	  mu_EM <- as.matrix(cov_list[[7]], ncol=1)
+	  mu_EW <- as.matrix(cov_list[[8]], ncol=1)
+	  mu_fZ <- as.matrix(cov_list[[9]], ncol=1)
+	  mu_fW <- as.matrix(cov_list[[10]], ncol=1)
+	  
+	  # Matrix covariances
+	  mu_GG <- as.matrix(cov_mat_list[[1]])
+	  mu_GZ <- cov_mat_list[[2]]; mu_ZG <- t(mu_GZ)
+	  mu_GM <- cov_mat_list[[3]]
+	  mu_GW <- cov_mat_list[[4]]; mu_WG <- t(mu_GW)
+	  mu_ZZ <- as.matrix(cov_mat_list[[5]])
+	  mu_ZW <- cov_mat_list[[6]]; mu_WZ <- t(mu_ZW)
+	  mu_ZM <- cov_mat_list[[7]]
+	  mu_WW <- as.matrix(cov_mat_list[[8]])
+	  mu_WM <- cov_mat_list[[9]]
+	  
+	  # Some higher order moments
+	  mu_GEG <- HOM_list[[1]]
+	  mu_GhG <- HOM_list[[2]]
+	  mu_GEE <- HOM_list[[3]]
+	  mu_GEf <- HOM_list[[4]]
+	  mu_GEh <- HOM_list[[5]]
+	  mu_GEZ <- HOM_list[[6]]; mu_ZEG <- t(mu_GEZ)
+	  mu_GEM <- HOM_list[[7]]
+	  mu_GEW <- HOM_list[[8]]; mu_WEG <- t(mu_GEW)
+	  mu_GhW <- HOM_list[[9]]; mu_WhG <- t(mu_GhW)
+	  mu_GhZ <- HOM_list[[10]]; mu_ZhG <- t(mu_GhZ)
+	  mu_GEEG <- HOM_list[[11]]
+	  mu_GEfG <- HOM_list[[12]]
+	  mu_GEhG <- HOM_list[[13]]
+
+	  ############################################################
+	  # Generate test data
+	  sig_mat <- normal_squaredmis_results$sig_mat
+	  test_data <- mvtnorm::rmvnorm(n=num_sub, sigma=sig_mat)
+	  
+	  # For thresholding
+	  w_vec <- qnorm(1-prob_G)
+	  
+	  # Get E, test it
+	  E <- test_data[, 2*num_G+1]
+	  
+	  temp_test <- mu_EE - mean(E*E)
+	  if (abs(temp_test) > test_threshold) {warning('Problem with mu_EE')}
+	  
+	  temp_test <- mu_Ef - mean(E*E*E)
+	  if (abs(temp_test) > test_threshold) {warning('Problem with mu_Ef')}
+	  
+	  # Get G, test G and GE
+	  G_mat <- matrix(data=NA, nrow=num_sub, ncol=num_G)
+	  for (i in 1:num_G) {
+	    G_mat[, i] <- as.numeric(test_data[, i*2-1] > w_vec[i]) + 
+	      as.numeric(test_data[, i*2] > w_vec[i]) - 2*prob_G[i]
+	    
+	    # Test GE
+	    temp_test <- rho_GE[i] - cov(G_mat[, i], E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with rho_GE')}
+	    
+	    temp_test <- mu_GE[i] - mean(G_mat[, i]*E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with mu_GE')}
+	    
+	    temp_test <- mu_Gf[i] - mean(G_mat[, i]*E*E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with mu_Gf')}
+	    
+	    temp_test <- mu_Gh[i] - mean(G_mat[, i]*E*E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with mu_Gh')}
+	    
+	    temp_test <- mu_GEE[i] - mean(G_mat[, i]*E*E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEE')}
+	    
+	    temp_test <- mu_GEf[i] - mean(G_mat[, i]*E*E*E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEf')}
+	    
+	    temp_test <- mu_GEh[i] - mean(G_mat[, i]*E*E*E)
+	    if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEh')}
 	  }
-	  if (is.null(sig_mat_WW)) {
-	    num_build_W <- 0
-	    W <- matrix(data=0, nrow=length(E), ncol=1)
-	  } else {
-	    num_build_W <- num_W
-	    W <- as.matrix(test_data[,(4+num_build_Z):(3+num_build_Z+num_W)])
+	  
+	  # Higher order GE moments
+	  for (i in 1:num_G) {
+	    for (j in 1:num_G) {
+	      temp_G1 <- G_mat[, i]
+	      temp_G2 <- G_mat[, j]
+	      
+	      temp_test <- mu_GG[i, j] - mean(temp_G1*temp_G2)
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_GG')}
+	      
+	      temp_test <- mu_GEG[i, j] - mean(temp_G1*temp_G2*E)
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEG')}
+	      
+	      temp_test <- mu_GEEG[i, j] - mean(temp_G1*temp_G2*E*E)
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEEG')}
+	      
+	      temp_test <- mu_GhG[i, j] - mean(temp_G1*temp_G2*E*E)
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_GhG')}
+	      
+	      temp_test <- mu_GEfG[i, j] - mean(temp_G1*temp_G2*E*E*E)
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEfG')}
+	      
+	      temp_test <- mu_GEhG[i, j] - mean(temp_G1*temp_G2*E*E*E)
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEhG')}
+	    }
 	  }
-	 
-  	# Start testing with calculated G covariances
-  	temp_test <- rho_GE - cov(G,E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with rho_GE')}
-  	
-  	for (i in 1:num_Z)
-  	{
-  		temp_test <- rho_GZ[i] - cov(G,Z[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with rho_GZ')}
-  	}
-  	
-  	for (i in 1:num_W)
-  	{
-  		temp_test <- rho_GW[i] - cov(G,W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with rho_GW')}
-  	}
-  	
-  	 ########################
- 	  # More covariances
-  	mu_GE <- rho_GE
- 	  mu_Gf <- 2*r_GE^2*w*dnorm(w) + 2*surv(w) - 2*prob_G
- 	  mu_Gh <- mu_Gf
- 	  mu_GG <- 2*prob_G*(1-prob_G)
- 	  MU_GZ <- rho_GZ  	# Vector
- 	  MU_GW <- rho_GW		# Vector
- 	  MU_EM <- 	rep(0, num_W)				# Vector, in particular because third moment of W is 0
- 	  MU_EZ <- rho_EZ			# Vector
- 	  MU_EW <- rho_EW			# Vector
- 	  mu_EE <- 1
- 	  mu_Ef <- 0
- 	  MU_fZ <- 	rep(0, num_Z)	# Vector
- 	  MU_fW <- 	rep(0, num_W)		# Vector
- 	  
- 	  # Depends on if M exists
- 	  if (num_build_W != 0) {
- 	    MU_GM <- 	2*r_GW^2*w*dnorm(w) + 2*surv(w) - 2*prob_G	# Vector, see gen_cor_bin_normal for explanation
- 	  } else {
- 	    MU_GM <- 0
- 	  }
- 	  
- 	  # Test the above
-  	temp_test <- mu_GE - mean(G*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GE')}
-  	
-  	temp_test <- mu_Gf - mean(G*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_Gf')}
-  	
-  	temp_test <- mu_Gh - mean(G*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_Gh')}
-  	
-  	temp_test <- mu_GG - mean(G*G)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GG')}
-  	
-  	for (i in 1:num_Z)
-  	{
-  		temp_test <- MU_GZ[i] - mean(G*Z[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_GZ')}
-  	}
-  	
-  	for (i in 1:num_W)
-  	{
-  		temp_test <- MU_GW[i] - mean(G*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_GW')}
-  	}
-  	
-  	for (i in 1:num_W)
-  	{
-  		temp_test <- MU_GM[i]- mean(G*W[,i]*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_GM')}
-  	}
-  	
-  	for (i in 1:num_W)
-  	{
-  		temp_test <- MU_EM[i] - mean(E*W[,i]*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_EM')}
-  	}
-  	
-  	for (i in 1:num_Z)
-  	{
-  		temp_test <- MU_EZ[i] - mean(E*Z[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_EZ')}
-  	}
-  	
-  	for (i in 1:num_W)
-  	{
-  		temp_test <- MU_EW[i] - mean(E*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_EW')}
-  	}
-  	
-  	for (i in 1:num_Z)
-  	{
-  		temp_test <- MU_fZ[i] - mean(E*E*Z[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_fZ')}
-  	}
-  	
-  	for (i in 1:num_W)
-  	{
-  		temp_test <- MU_fW[i] - mean(E*E*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_fW')}
-  	}
-  	
-   	########################
- 	  # Matrix covariances
- 	  MU_ZW <- matrix(data=rho_ZW, nrow=num_Z, ncol=num_W, byrow=TRUE)	# Matrix	 
-  	MU_WZ <- t(MU_ZW)	 
- 	  MU_ZM <- matrix(data=0, nrow=num_Z, ncol=num_W) 		# Matrix
- 	  MU_WM <- matrix(data=0, nrow=num_W, ncol=num_W) 			# Matrix
-  	MU_ZZ <- sig_mat_ZZ 		# Matrix
-  	MU_WW <- sig_mat_WW		# Matrix
-  	
-  	# Check them
-  	for (i in 1:num_Z)
-  	{
-  		for (j in 1:num_W)
-  		{
-  			temp_test <- MU_ZW[i,j] - mean(Z[,i]*W[,j])
-  			if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZW')}
-  		}
-  	}
-  	
-  	for (i in 1:num_Z)
-  	{
-  		for (j in 1:num_W)
-  		{
-  			temp_test <- MU_ZM[i,j] - mean(Z[,i]*W[,j]*W[,j])
-  			if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZM')}
-  		}
-  	}
-  	  
-  	for (i in 1:num_W)
-  	{
-  		for (j in 1:num_W)
-  		{
-  			temp_test <- MU_WM[i,j] - mean(W[,i]*W[,j]*W[,j])
-  			if (abs(temp_test) > test_threshold) {warning('Problem with mu_WM')}
-  		}
-  	}	
-  	
-  	# If Z exists.
-  	if ( !is.null(MU_ZZ) ) {
-  	  for (i in 1:num_Z)
-  	  {
-  	  	for (j in 1:num_Z)
-  	  	{
-  	  		temp_test <- MU_ZZ[i,j] - mean(Z[,i]*Z[,j])
-  	  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZZ')}
-  	  	}
-  	  }	
-  	}
-  	
-  	# If W exists.
-  	if ( !is.null(MU_WW) ) {
-  	  for (i in 1:num_W)
-  	  {
-  	  	for (j in 1:num_W)
-  	  	{
-  	  		temp_test <- MU_WW[i,j] - mean(W[,i]*W[,j])
-  	  		if (abs(temp_test) > test_threshold) {warning('Problem with mu_WM')}
-  	  	}
-  	  }
-  	}
-  	
-    ########################
-  	# Higher order moments, intermediate quantities
-  	mu_G1_E <- r_GE*dnorm(w)
-  	mu_G1_EE <- r_GE^2*w*dnorm(w) + surv(w)
-  	mu_G1_EEE <- r_GE^3*w^2*dnorm(w) - r_GE^3*dnorm(w) + 3*r_GE*dnorm(w)
-  	
-  	temp_sig <- matrix(data=c(1-r_GE^2, -r_GE^2, -r_GE^2, 1-r_GE^2), nrow=2)
-  	f_G1_G2_E <- function(x,w,r_GE) {
-  		x*dnorm(x)*mvtnorm::pmvnorm(lower=c(w,w), upper=c(Inf,Inf), mean=c(r_GE*x, r_GE*x), sigma=temp_sig)
-  	}
-  	mu_G1_G2_E <- pracma::quadinf(f=f_G1_G2_E, xa=-Inf, xb=Inf, w=w, r_GE=r_GE)$Q[1]
-  
-  	temp_sig <- matrix(data=c(1-r_GE^2, -r_GE^2, -r_GE^2, 1-r_GE^2), nrow=2)
-  	f_G1_G2_EE <- function(x,w,r_GE) {
-  		x^2*dnorm(x)*mvtnorm::pmvnorm(lower=c(w,w), upper=c(Inf,Inf), mean=c(r_GE*x, r_GE*x), sigma=temp_sig)
-  	}
-  	mu_G1_G2_EE <- pracma::quadinf(f=f_G1_G2_EE, xa=-Inf, xb=Inf, w=w, r_GE=r_GE)$Q[1]
-  
-  	temp_sig <- matrix(data=c(1-r_GE^2, -r_GE^2, -r_GE^2, 1-r_GE^2), nrow=2)
-  	f_G1_G2_EEE <- function(x,w,r_GE) {
-  		x^3*dnorm(x)*mvtnorm::pmvnorm(lower=c(w,w), upper=c(Inf,Inf), mean=c(r_GE*x, r_GE*x), sigma=temp_sig)
-  	}
-  	mu_G1_G2_EEE <- pracma::quadinf(f=f_G1_G2_EEE, xa=-Inf, xb=Inf, w=w, r_GE=r_GE)$Q[1]
-  
-  	
-  	# Higher order moments, see gen_cor_bin_normal to see how to do these
-  	mu_GGE <- 2*mu_G1_E + 2*mu_G1_G2_E - 8*prob_G*mu_G1_E
-  	mu_GGh <- 2*mu_G1_EE + 2*mu_G1_G2_EE + 4*prob_G^2*1 - 8*prob_G*mu_G1_EE
-  	mu_GEE <- mu_Gf
-  	mu_GEf <- 2*(r_GE^3*w^2*dnorm(w) - r_GE^3*dnorm(w) + 3*r_GE*dnorm(w))
-  	mu_GEh <- mu_GEf
-  
-  	mu_GGEE <- 2*mu_G1_EE + 2*mu_G1_G2_EE + 4*prob_G^2*1 - 8*prob_G*mu_G1_EE
-  	mu_GGEf <- 2*mu_G1_EEE + 2*mu_G1_G2_EEE + 4*prob_G^2*0 - 8*prob_G*mu_G1_EEE
-  	mu_GGEh <- mu_GGEf
-  
- 	  ##################################
-  	# Check	
-  	temp_test <- mu_G1_E - mean(G1*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_E')}
-  	
-  	temp_test <- mu_G1_EE - mean(G1*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_EE')}
-  	
-  	temp_test <- mu_G1_EEE - mean(G1*E*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_EEE')}
-  	
-  	temp_test <- mu_G1_G2_E - mean(G1*G2*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_G2_E')}
-  	
-  	temp_test <- mu_G1_G2_EE - mean(G1*G2*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_G2_EE')}
-  	
-  	temp_test <- mu_G1_G2_EEE - mean(G1*G2*E*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_G2_EEE')}
+	  
+	  # Now do G and E with Z
+	  if (num_Z > 0) {
+	    Z_mat <- as.matrix(test_data[, (2+2*num_G):(1+2*num_G+num_Z)])
+	    for (i in 1:num_Z) {
+	      
+	      temp_test <- rho_EZ[i] - cov(E,Z_mat[,i])
+	      if (abs(temp_test) > test_threshold) {warning('Problem with rho_EZ')}
+	      
+	      temp_test <- mu_EZ[i] - mean(E*Z_mat[,i])
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_EZ')}
+	      
+	      temp_test <- mu_fZ[i] - mean(E*E*Z_mat[,i])
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_fZ')}
+	      
+	      for (j in 1:num_Z) {
+	        temp_test <- mu_ZZ[i, j] - mean(Z_mat[, i]*Z_mat[, j])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZZ')}
+	      }
+	      
+	      for (j in 1:num_G) {
+	        temp_G <- G_mat[, j]
+	        
+	        temp_test <- rho_GZ[((j-1)*num_Z+i)] - cov(temp_G, Z_mat[,i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with rho_GZ')}
+	        
+	        temp_test <- mu_GZ[j, i] - mean(temp_G*Z_mat[,i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GZ')}
+	        
+	        temp_test <- mu_GEZ[j, i] - mean(temp_G*E*Z_mat[,i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEZ')}
+	        
+	        temp_test <- mu_ZEG[i, j] - mean(temp_G*E*Z_mat[,i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZEG')}
+	        
+	        temp_test <- mu_GhZ[j, i] - mean(temp_G*E*E*Z_mat[,i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GhZ')}
+	      }
+	    }
+	  }
+	  
+	  
+	  if (num_W > 0) {
+	    W_mat <- as.matrix(test_data[, (2+2*num_G+num_Z):(1+2*num_G+num_Z+num_W)])
+	    
+	    for (i in 1:num_W) {
+	      
+	      temp_test <- rho_EW[i] - cov(E, W_mat[, i])
+	      if (abs(temp_test) > test_threshold) {warning('Problem with rho_EW')}
+	      
+	      temp_test <- mu_EW[i] - mean(E*W_mat[, i])
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_EW')}
+	      
+	      temp_test <- mu_fW[i] - mean(E*E*W_mat[, i])
+	      if (abs(temp_test) > test_threshold) {warning('Problem with mu_fW')}
+	      
+	      for (j in 1:num_W) {
+	        temp_test <- mu_WW[i, j] - mean(W_mat[, i]*W_mat[, j])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_WW')}
+	        
+	        temp_test <- mu_WM[i, j] - mean(W_mat[, i]*W_mat[, j]^2)
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_WM')}
+	      }
+	      
+	      for (j in 1:num_G) {
+	        temp_G <- G_mat[, j]
+	        
+	        temp_test <- rho_GW[((j-1)*num_W+i)] - cov(temp_G, W_mat[, i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with rho_GW')}
+	        
+	        temp_test <- mu_GW[j, i] - mean(temp_G*W_mat[, i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GW')}
+	        
+	        temp_test <- mu_GM[j, i] - mean(temp_G*W_mat[, i]^2)
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GM')}
+	        
+	        temp_test <- mu_GEW[j, i] - mean(temp_G*E*W_mat[, i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEW')}
+	        
+	        temp_test <- mu_WEG[i, j] - mean(temp_G*E*W_mat[, i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_WEG')}
+	        
+	        temp_test <- mu_GEM[j, i] - mean(temp_G*E*W_mat[, i]^2)
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEM')}
+	        
+	        temp_test <- mu_GhW[j, i] - mean(temp_G*E*E*W_mat[, i])
+	        if (abs(temp_test) > test_threshold) {warning('Problem with mu_GhW')}
+	      }
+	      
+	      if (num_Z > 0) {
+	        for (j in 1:num_Z) {
+	          temp_test <- rho_ZW[((j-1)*num_W+i)] - mean(Z_mat[, j]*W_mat[, i])
+	          if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZW')}
+	          
+	          temp_test <- mu_ZW[j, i] - mean(Z_mat[, j]*W_mat[, i])
+	          if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZW')}
+	          
+	          temp_test <- mu_ZM[j, i] - mean(Z_mat[, j]*W_mat[, i]^2)
+	          if (abs(temp_test) > test_threshold) {warning('Problem with mu_ZM')}
+	        }
+	      }
+	    }
+	  }
 
-  	temp_test <- mu_GGE - mean(G*G*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GGE')}
-  	
-  	temp_test <- mu_GGh - mean(G*G*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GGh')}
-  	
-  	temp_test <- mu_GEE - mean(G*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEE')}
-  	
-  	temp_test <- mu_GEf - mean(G*E*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEf')}
-  	
-  	temp_test <- mu_GEh - mean(G*E*E*E)
-  	if (abs(temp_test) > test_threshold) {warning('Problem with mu_GEh')}
-  
-  
-  
- 	  ##############
-  	# Harder intermediate quantities involving Z and W
-  	f_G1_E_Z <- function(x, w, r_EZ, r_GE, r_GZ) {
-  		( r_EZ * x * surv( (w-x*r_GE) / sqrt(1-r_GE^2) ) + dnorm( (w-r_GE*x) / sqrt(1-r_GE^2) ) * 
-  			(r_GZ-r_GE*r_EZ) / sqrt(1-r_GE^2) ) * x* dnorm(x)
-  	}
-  	if ( !is.null(sig_mat_ZZ) ) {
-  	  mu_G1_E_Z <- rep(NA, num_Z)
-  	  for (i in 1:num_Z) {
-  		  mu_G1_E_Z[i] <- pracma::quadinf(f= f_G1_E_Z, xa=-Inf, xb=Inf, w=w, r_EZ=rho_EZ[i], r_GE=r_GE, r_GZ=r_GZ[i])$Q
-  		  temp_test <- mu_G1_E_Z[i] - mean(G1*E*Z[,i])
-  		  if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_E_Z')}
-  	  }
-  	} else {
-  	  mu_G1_E_Z <- 0
-  	}
-  
-  	mu_G1_E_W <- rep(NA, num_W)
-  	f_G1_E_W <- function(x, w, r_EW, r_GE, r_GW) {
-  		( r_EW * x * surv( (w-x*r_GE) / sqrt(1-r_GE^2) ) + dnorm( (w-r_GE*x) / sqrt(1-r_GE^2) ) * 
-  			(r_GW-r_GE*r_EW) / sqrt(1-r_GE^2) ) * x* dnorm(x)
-  	}
-  	if ( !is.null(sig_mat_WW) ) {
-  	  for (i in 1:num_W) {
-  		  mu_G1_E_W[i] <- pracma::quadinf(f= f_G1_E_W, xa=-Inf, xb=Inf, w=w, r_EW=rho_EW[i], r_GE=r_GE, r_GW=r_GW[i])$Q
-  		  temp_test <- mu_G1_E_W[i] - mean(G1*E*W[,i])
-  		  if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_E_W')}
-  	  }
-  	} else {
-  	  mu_G1_E_W <- 0
-  	}
-
-	  mu_G1_E_WW <- rep(NA, num_W)
-  	f_G1_E_WW <- function(x, w, r_GE, r_GW, r_EW) {
-  		( r_EW * x* surv( (w-x*r_GW) / sqrt(1-r_GW^2) ) + dnorm( (w-r_GW*x) / 
-  			sqrt(1-r_GW^2) ) * (r_GE-r_GW*r_EW) / sqrt(1-r_GW^2) ) * x^2 * dnorm(x)
-  	}
-  	if ( !is.null(sig_mat_WW) ) {
-  	  for (i in 1:num_W) {
-  		  mu_G1_E_WW[i] <- pracma::quadinf(f=f_G1_E_WW, xa=-Inf, xb=Inf, w=w , r_GE=r_GE, r_GW=r_GW[i], r_EW=rho_EW[i])$Q
-  		  temp_test <- mu_G1_E_WW[i] - mean(G1*E*W[,i]*W[,i])
-  		  if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_E_WW')}
-  	  }
-  	} else {
-  	  mu_G1_E_WW <- 0
-  	}
-  
-    mu_G1_W_EE <- rep(NA, num_W)
-  	f_G1_W_EE <- function(x, w, r_GE, r_GW, r_EW) {
-  		( r_EW * x* surv( (w-x*r_GE) / sqrt(1-r_GE^2) ) + dnorm( (w-r_GE*x) / 
-  			sqrt(1-r_GE^2) ) * (r_GW-r_GE*r_EW) / sqrt(1-r_GE^2) ) * x^2 * dnorm(x)
-  	}
-  	if ( !is.null(sig_mat_WW) ) {
-  	  for (i in 1:num_W) {
-  		  mu_G1_W_EE[i] <- pracma::quadinf(f=f_G1_W_EE, xa=-Inf, xb=Inf, w=w, r_GE=r_GE, r_GW=r_GW[i], r_EW=rho_EW[i])$Q
-  		  temp_test <- mu_G1_W_EE[i] - mean(G1*W[,i]*E*E)
-  		  if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_W_EE')}
-  	  }
-  	} else {
-  	  mu_G1_W_EE <- 0
-  	}
-
-    mu_G1_Z_EE  <- rep(NA, num_Z)
-  	f_G1_Z_EE <- function(x, w, r_GE, r_GZ, r_EZ) {
-  		( r_EZ * x* surv( (w-x*r_GE) / sqrt(1-r_GE^2) ) + dnorm( (w-r_GE*x) / 
-  			sqrt(1-r_GE^2) ) * (r_GZ-r_GE*r_EZ) / sqrt(1-r_GE^2) ) * x^2 * dnorm(x)
-  	}	
-  	if ( !is.null(sig_mat_ZZ) ) {
-  	  for (i in 1:num_Z) {
-  		  mu_G1_Z_EE[i] <- pracma::quadinf(f=f_G1_Z_EE, xa=-Inf, xb=Inf, w=w, r_GE=r_GE, r_GZ=r_GZ[i], r_EZ=rho_EZ[i])$Q
-  		  temp_test <- mu_G1_Z_EE[i] - mean(G1*Z[,i]*E*E)
-  		  if (abs(temp_test) > test_threshold) {warning('Problem with mu_G1_Z_EE')}
-  	  }
-  	} else {
-  	  mu_G1_Z_EE <- 0
-  	}
-  	
-  	##############
-  	# Check higher orders with Z and W
-  	MU_GEZ <- 2*mu_G1_E_Z - 2*prob_G*rho_EZ			# Vector
-  	MU_GEW <- 2*mu_G1_E_W	- 2*prob_G*rho_EW		# Vector
-  	MU_GEM <-	2*mu_G1_E_WW				# Vector
-  	MU_GhW <- 2*mu_G1_W_EE
-  	MU_GhZ <- 2*mu_G1_Z_EE
-  
-  	# Test
- 	  for (i in 1:num_Z) { 	
-  		temp_test <- MU_GEZ[i] - mean(G*E*Z[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with MU_GEZ')}
-  	}
-  	
-  	for (i in 1:num_W) {
-  		temp_test <- MU_GEW[i] - mean(G*E*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with MU_GEW')}
-  	}
-  	
-  	for (i in 1:num_W) {
-  		temp_test <- MU_GEM[i] - mean(G*E*W[,i]*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with MU_GEM')}
-  	}
-  	
-  	for (i in 1:num_W) {
-  		temp_test <- MU_GhW[i] - mean(G*E*E*W[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with MU_GhW')}
-  	}
-  	
-  	for (i in 1:num_Z) {
-  		temp_test <- MU_GhZ[i] - mean(G*E*E*Z[,i])
-  		if (abs(temp_test) > test_threshold) {warning('Problem with MU_GhZ')}
-	}
-  	
   	cat('Done')
 }
 

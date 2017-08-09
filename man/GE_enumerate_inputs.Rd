@@ -10,9 +10,7 @@ GE_enumerate_inputs()
 Nothing
 }
 \description{
-Call this function to display the necessary inputs for GE_bias.  If you see a term like
-mu_Gf, that means it is the scalar E[G*f(E)].  If you see a term like MU_GM, that means it
-is the vector c(E[G*M_1], E[G*M_2], ..., E[G*M_q]) where M is of dimension q.  For terms in 
+Call this function to display the necessary inputs for GE_bias_set. For terms in 
 cov_mat_list like E[ZZ], these should be matrices where the (i,j) element is E[Z_i*Z_j].
 }
 \examples{

@@ -4,8 +4,8 @@
 \alias{GE_scoreeq_sim}
 \title{GE_scoreeq_sim.R}
 \usage{
-GE_scoreeq_sim(num_sims = 5000, num_sub = 2000, beta_list, prob_G, rho_list,
-  cov_Z = NULL, cov_W = NULL)
+GE_scoreeq_sim(num_sims = 5000, num_sub = 2000, beta_list, rho_list, prob_G,
+  cov_Z = NULL, cov_W = NULL, corr_G = NULL)
 }
 \arguments{
 \item{num_sims}{The number of simulations to run, we suggest 5000.}
@@ -14,26 +14,28 @@ GE_scoreeq_sim(num_sims = 5000, num_sub = 2000, beta_list, prob_G, rho_list,
 
 \item{beta_list}{A list of the effect sizes in the true model.
 Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
-If Z or M is a vector, then beta_Z and beta_M should be vectors.}
+If G or Z or M is a vector, then beta_G/beta_Z/beta_M should be vectors.
+If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.}
+
+\item{rho_list}{A list of expectations (which happen to be covariances if all covariates
+are centered at 0) in the order specified by GE_enumerate_inputs().
+If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).
+If describing expectations relating two vectors, i.e. Z includes two covariates and W
+includes three covariates, sort by the first term and then the second. Thus in the 
+example, the first three terms of cov(ZW) are cov(Z_1,W_1),cov(Z_1,W_2), cov(Z_1,W_3), 
+and the last three terms are cov(Z_3,W_1), cov(Z_3,W_2), cov(Z_3,W_3).}
 
 \item{prob_G}{Probability that each allele is equal to 1.  Since each SNP has
-two alleles, the expectation of G is 2*prob_G.}
+two alleles, the expectation of G is 2*prob_G. Should be a d*1 vector.}
 
-\item{rho_list}{A list of the 6 pairwise covariances between the
-covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
-(4) cov_GW (5) cov_EW (6) cov_ZW.
-Again if Z or W are vectors then terms like cov_GZ should be vectors (in the order
-cov(G,Z_1),...,cov(G,Z_p)) where Z is of dimension p, and similarly for W.
-If Z or M are vectors, then cov_ZW should be a vector in the order (cov(Z_1,W_1),...,cov(Z_1,W_q),
-cov(Z_2,W_1),........,cov(Z_p,W_q) where Z is a vector of length p and W is a vector of length q.}
+\item{cov_Z}{Should be a matrix equal to cov(Z) or NULL if no Z.}
 
-\item{cov_Z}{Only used if Z is a vector, gives the covariance matrix of Z (remember by assumption
-Z has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-of the vector.}
+\item{cov_W}{Should be a matrix equal to cov(W) or NULL if no W.}
 
-\item{cov_W}{Only used if W is a vector, gives the covariance matrix of W (remember by assumption
-W has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-of the vector.}
+\item{corr_G}{Should be a matrix giving the *pairwise correlations* between each SNP
+in the set, or NULL. Must be specified if G is a vector.  For example, the [2,3] element
+of the matrix would be the pairwise correlation between SNP2 and SNP3.}
 }
 \value{
 A list of the fitted values alpha
@@ -44,7 +46,7 @@ the correct alpha values in GE_bias_norm_squaredmis().
 Make the same assumptions as in GE_bias_norm_squaredmis().
 }
 \examples{
-GE_scoreeq_sim( num_sims=10, beta_list=as.list(runif(n=6, min=0, max=1)), 
-						rho_list=as.list(rep(0.3,6)), prob_G=0.3)
+GE_scoreeq_sim( num_sims=10, num_sub=1000, beta_list=as.list(runif(n=6, min=0, max=1)), 
+rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 }
 

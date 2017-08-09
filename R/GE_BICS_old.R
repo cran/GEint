@@ -1,4 +1,4 @@
-#' GE_BICS.R
+#' GE_BICS_old.R
 #'
 #' A function to perform inference on the GxE interaction regression coefficient.
 #' Shows better small sample performance than comparable methods.
@@ -19,9 +19,9 @@
 #' G <- rbinom(n=500, size=2, prob=0.3)
 #' design_mat <- cbind(1, G, E, G*E)
 #' outcome <- rnorm(500)
-#' GE_BICS(outcome=outcome, design_mat=design_mat, desired_coef=4, outcome_type='C')
+#' GE_BICS_old(outcome=outcome, design_mat=design_mat, desired_coef=4, outcome_type='C')
 
-GE_BICS <- function(outcome, design_mat, num_boots=1000, desired_coef, outcome_type)
+GE_BICS_old <- function(outcome, design_mat, num_boots=1000, desired_coef, outcome_type)
 {
 	colnames(design_mat) <- 1:ncol(design_mat)
 	n <- length(outcome)
@@ -36,8 +36,8 @@ GE_BICS <- function(outcome, design_mat, num_boots=1000, desired_coef, outcome_t
 		stop('Invalid outcome type!')
 	}
 	beta_init <- summary(init_mod)$coefficients[desired_coef,1]
-	v_init <- summary(init_mod)$cov.unscaled[desired_coef, desired_coef]
-	
+	se_init <- summary(init_mod)$coefficients[desired_coef,2]
+
 	# Bootstrapping
 	b_vec <- rep(NA, num_boots)
 	z_vec <- rep(NA, num_boots)
@@ -64,7 +64,7 @@ GE_BICS <- function(outcome, design_mat, num_boots=1000, desired_coef, outcome_t
 			resid_sq <- as.numeric( (temp_Y - fit_y)^2 )
 			meat <- crossprod(temp_X * resid_sq, temp_X)
 			b_k <- b_hat[desired_coef]
-			v_k <- ( (bread %*% meat %*% bread)[desired_coef,desired_coef] )	
+			s_k <- sqrt( (bread %*% meat %*% bread)[desired_coef,desired_coef] )	
 		} else {
 			boot_mod <- tryCatch(speedglm::speedglm.wfit(y=temp_Y, X=temp_X, family=binomial()), 
 				warning=function(w) w, error=function(e) e)
@@ -73,11 +73,12 @@ GE_BICS <- function(outcome, design_mat, num_boots=1000, desired_coef, outcome_t
 			fitted <- as.numeric( rje::expit( temp_X %*% boot_mod$coefficients ) )
 			bread <- solve( crossprod(temp_X * fitted * (1-fitted), temp_X) )
 			meat <- crossprod(temp_X*(temp_Y-fitted)^2, temp_X)
-			v_k <- ( (bread %*% meat %*% bread)[desired_coef,desired_coef] )
+			s_k <- sqrt( (bread %*% meat %*% bread)[desired_coef,desired_coef] )
 			b_k <- boot_mod$coefficients[desired_coef]
 		}
 		
-		z_vec[i] <- t(b_k-beta_init) %*% solve(v_k) %*%  (b_k-beta_init) 
+		b_vec[i] <- b_k
+		z_vec[i] <- ((b_k-beta_init)/s_k)^2
 	}
 	
 	# Match moments
@@ -87,8 +88,9 @@ GE_BICS <- function(outcome, design_mat, num_boots=1000, desired_coef, outcome_t
 	a <- mean_Z / cee
 	
 	# Calculate p-value
-	test_stat <- (t(beta_init) %*% solve(v_init) %*% beta_init) / cee
+	test_stat <- (beta_init / se_init)^2 / cee
 	p_value <- 1-pgamma(test_stat, shape=a/2, scale=2)
+	
 	
 	return( p_value )
 }

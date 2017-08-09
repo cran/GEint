@@ -5,33 +5,38 @@
 #' checking validity of covariance structure.  If invalid covariance structure, will stop
 #' and return an error message.
 #' 
-#' @param rho_list A list of the 6 pairwise covariances between the
-#' covariates.  These should be in the order (1) cov_GE (2) cov_GZ (3) cov_EZ
-#' (4) cov_GW (5) cov_EW (6) cov_ZW. If Z or M are vectors then terms like cov_GZ should be vectors 
-#' (in the appropriate order).
-#' If Z or M are vectors, then cov_ZW should be a vector in the order (cov(Z_1,W_1),...,cov(Z_1,W_q),
-#' cov(Z_2,W_1),........,cov(Z_p,W_q) where Z is a vector of length p and W is a vector of length q.
-#' @param cov_Z Only used if Z is a vector, gives the covariance matrix of Z (remember by assumption
-#' Z has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-#' of the vector.
-#' @param cov_W Only used if W is a vector, gives the covariance matrix of W (remember by assumption
-#' W has mean 0 and variance 1).  The (i,j) element of the matrix should be the (i-1)(i-2)/2+j element
-#' of the vector.
+#' @param beta_list A list of the effect sizes in the true model.
+#' Use the order beta_0, beta_G, beta_E, beta_I, beta_Z, beta_M.
+#' If G or Z or M is a vector, then beta_G/beta_Z/beta_M should be vectors.
+#' If Z and/or M/W do not exist in your model, then set beta_Z and/or beta_M = 0.
+#' @param cov_list A list of expectations (which happen to be covariances if all covariates
+#' are centered at 0) in the order specified by GE_enumerate_inputs().
+#' If Z and/or M/W do not exist in your model, then treat them as constants 0. For example,
+#' if Z doesn't exist and W includes 2 covariates, then set cov(EZ) = 0 and cov(ZW) = (0,0).
+#' If describing expectations relating two vectors, i.e. Z includes two covariates and W
+#' includes three covariates, sort by the first term and then the second. Thus in the 
+#' example, the first three terms of cov(ZW) are cov(Z_1,W_1),cov(Z_1,W_2), cov(Z_1,W_3), 
+#' and the last three terms are cov(Z_3,W_1), cov(Z_3,W_2), cov(Z_3,W_3).
 #' @param prob_G Probability that each allele is equal to 1.  Since each SNP has
 #' two alleles, the expectation of G is 2*prob_G.
+#' @param cov_Z Should be a matrix equal to cov(Z) or NULL if no Z.  
+#' @param cov_W Should be a matrix equal to cov(W) or NULL if no W.
+#' @param corr_G Should be a matrix giving the *pairwise correlations* between each SNP
+#' in the set, or NULL. Must be specified if G is a vector.  For example, the [2,3] element
+#' of the matrix would be the pairwise correlation between SNP2 and SNP3. Diagonal
+#' should be 1.
+
 #'
 #' @return A list with the elements:
 #' \item{sig_mat_total}{The sigma parameter for rmvnorm call to generate our data.}
-#' \item{sig_mat_ZZ}{The covariance matrix of Z, i.e. E[ZZ^T]}
-#' \item{sig_mat_WW}{The covariance matrix of W, i.e. E[WW^T]}
 #'
 #' @keywords internal
 #' @export
 #' @examples 
-#' GE_translate_inputs( beta_list=as.list(runif(n=6, min=0, max=1)), 
-#'							rho_list=as.list(rep(0.3,6)), prob_G=0.3)
+#' GE_translate_inputs( beta_list=as.list(runif(n=6, min=0, max=1)),
+#' rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 
-GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL)
+GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL, corr_G=NULL)
 {
 	  # First, make sure we got good inputs
   	if (length(beta_list) != 6 | length(rho_list) != 6 | class(beta_list) != 'list' | class(rho_list) != 'list')
@@ -40,120 +45,209 @@ GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=N
   	}
 
 	  # How long are these vectors?  Remember that W is the same length as M by assumption.
-    # Check for Z and M/W nonexistence LATER
-    num_Z <- length(beta_list[[5]])
-    num_W <- length(beta_list[[6]])
+    # The number is 0 if an element of beta_list is NULL
+    num_G <- length(beta_list[[2]])
+    num_I <- length(beta_list[[4]])
+    num_Z <- length(beta_list[[5]]); if(num_Z == 1 & beta_list[[5]][1] == 0) {num_Z <- 0}
+    num_W <- length(beta_list[[6]]); if(num_W == 1 & beta_list[[6]][1] == 0) {num_W <- 0}
+    
+    # Make sure we have the same number of effect sizes for G and G*E in true model.
+    # Also same as the length of the MAF for G.
+    if (num_G != num_I | num_G != length(prob_G)) {
+      stop('Discordance between effect sizes for G and probabilities of G')
+    }
+
+    # Fill in our covariances.
+    rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
+    rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
 
   	# Make sure we have compatible lengths for rho_list
-    if (length(rho_list[[2]]) != num_Z | length(rho_list[[3]]) != num_Z | length(rho_list[[4]]) != num_W
-   			| length(rho_list[[5]]) != num_W | length(rho_list[[6]]) != num_Z*num_W) {
-   		stop('Incompatible number of elements in beta/rho_list')
-   	}
-    	
-   	# Fill in our covariances.
-   	rho_GE <- rho_list[[1]]; rho_GZ <- rho_list[[2]]; rho_EZ <- rho_list[[3]]
-   	rho_GW <- rho_list[[4]]; rho_EW <- rho_list[[5]]; rho_ZW <- rho_list[[6]]
-   	
-   	# Now check for Z and M/W nonexistence, after confirming rho_list is correct length
-   	# If no Z or M/W, then we need to set num_Z and num_W=0 in this function so that
-   	# the indicies will be correct later for building the covariance matrix.
-   	if (length(beta_list[[5]]) == 1 & beta_list[[5]][1] == 0) { num_Z <- 0 }
-   	if (length(beta_list[[6]]) == 1 & beta_list[[6]][1] == 0) { num_W <- 0 }
-   	
+    if (length(rho_GE) != num_G) {
+      stop('Incompatible number of elements in beta/rho_list')
+    }
+    if (num_Z > 0) {
+      if (length(rho_GZ) != num_Z*num_G | length(rho_EZ) != num_Z)
+      {
+        stop('Incompatible number of elements in beta/rho_list')
+      }
+      if (num_W > 0) {
+        if (length(rho_ZW) != num_Z*num_W) {
+          stop('Incompatible number of elements in beta/rho_list')
+        }
+      }
+    }
+    if (num_W > 0) {
+      if (length(rho_GW) != num_G*num_W | length(rho_EW) != num_W) {
+        stop('Incompatible number of elements in beta/rho_list')
+      }
+    }
+    
+    if (num_G > 1) {
+      if (ncol(corr_G) != num_G | nrow(corr_G) != num_G) {
+        stop('Incompatible number of elements in beta/rho_list')
+      }
+    }
+    
    	################################################################
     # Build our covariance matrix in steps.
-    # The 3x3 in the top left is always the same to build, vectors or not.
-    w <- qnorm(1-prob_G)					# Threshold for generating G
-    r_GE <- rho_GE / (2*dnorm(w))	
-    sig_mat_GE <- matrix(data=c(1, 0, r_GE, 0, 1, r_GE, r_GE, r_GE, 1), nrow=3) 
     
-    # Build the p*3 matrix that describes Z with G1,G2,E
-    if (num_Z != 0) {
-      sig_mat_Z_column <- matrix(data=NA, nrow=num_Z, ncol=3)
-      r_GZ <- rho_GZ / (2*dnorm(w))
-      for (i in 1:num_Z) {
-    	  sig_mat_Z_column[i,] <- c(r_GZ[i], r_GZ[i], rho_EZ[i])
+    # (1) First step is to build the 2d*2d upper left corner for the G
+    # Use bindata to do this
+    if (num_G > 1) {
+      #G_bin_struct <- matrix(data=0, nrow=num_G, ncol=num_G)
+      #G_bin_struct[upper.tri(G_bin_struct)] <- rho_GG
+      #G_bin_struct <- G_bin_struct + t(G_bin_struct)
+      G_bin_struct <- corr_G
+      
+      cprob <- tryCatch(bindata::bincorr2commonprob(margprob = prob_G, bincorr=G_bin_struct),
+                        warning=function(w) w, error=function(e) e)
+      if (class(cprob)[1] != 'matrix') {
+        stop ('You specified an invalid corr_G structure')
       }
-    } 
-    
-    # Build the q*3 matrix that describes W with G1,G2,E
-    if (num_W != 0)
-    {
-      sig_mat_W_column <- matrix(data=NA, nrow=num_W, ncol=3)
-      r_GW <- rho_GW / (2*dnorm(w))
-      for (i in 1:num_W) {
-      	sig_mat_W_column[i,] <- c(r_GW[i], r_GW[i], rho_EW[i])
+      sigma_struct <- tryCatch(bindata::commonprob2sigma(commonprob=cprob), 
+                               warning=function(w) w, error=function(e) e)
+      if (class(sigma_struct)[1] != 'matrix') {
+        stop ('You specified an invalid corr_G structure')
       }
-    } 
-    
-    # Build the p*q matrix that describes Z with W.
-    if (num_Z != 0 & num_W != 0) {
-      sig_mat_Z_W <- matrix(data=NA, nrow=num_Z, ncol=num_W)
-      for (i in 1:num_Z) {
-    	  start_ind <- (i-1)*num_W+1
-    	  end_ind <- i*num_W
-    	  sig_mat_Z_W[i,] <- rho_ZW[start_ind:end_ind]
+      
+      # Now that we have the structure, we need to account for two thresholded
+      # normals making up every G, so insert an extra d terms.
+      G_segment <- matrix(data=0, nrow=2*num_G, ncol=2*num_G)
+      for (i in 1:num_G) {
+        odd_seq <- seq(from=1, to=(2*num_G-1), by=2)
+        even_seq <- odd_seq + 1
+        G_segment[i*2-1, odd_seq] <- sigma_struct[i, ]
+        G_segment[i*2, even_seq] <- sigma_struct[i, ]
       }
-    }  # No else here, just don't build it later.
-    
-    # If Z or W vectorized, build the ZZ and WW covariance matrices too
-    if (num_Z > 1) {
-    	sig_mat_ZZ <- matrix(data=0, nrow=num_Z, ncol=num_Z)
-    	sig_mat_ZZ[upper.tri(sig_mat_ZZ)] <- cov_Z
-    	sig_mat_ZZ <- sig_mat_ZZ + t(sig_mat_ZZ)
-    	diag(sig_mat_ZZ) <- 1
-    } else if (num_Z == 0) {        # If no Z, then return NULL for sig_mat_ZZ.
-      sig_mat_ZZ <- NULL
-    } else if (num_Z == 1) {
-    	sig_mat_ZZ <- matrix(data=1, nrow=1, ncol=1) 
+    } else {
+      G_segment <- diag(x=1, nrow=2, ncol=2)
     }
     
-    if (num_W > 1) {
-    	sig_mat_WW <- matrix(data=0, nrow=num_W, ncol=num_W)
-    	sig_mat_WW[upper.tri(sig_mat_WW)] <- cov_W
-    	sig_mat_WW <- sig_mat_WW + t(sig_mat_WW)
-    	diag(sig_mat_WW) <- 1
-    } else if (num_W == 0) {      # If no W, then return NULL for sig_mat_WW.
-      sig_mat_WW <- NULL
-    } else if (num_W == 1) {
-    	sig_mat_WW <- matrix(data=1, nrow=1, ncol=1)
+    # Now generate the 2d+1 row/column, which describes GE
+    w_vec <- qnorm(1-prob_G)
+    r_GE <- rho_GE / (2*dnorm(w_vec))
+    GE_segment <- rep(r_GE, each=2)
+    
+    # Now make the GZ part
+    if (num_Z != 0) {
+      GZ_segment <- matrix(data=NA, nrow=2*num_G, ncol=num_Z) 
+      for (i in 1:num_G) {
+        r_GZ <-  rho_GZ[((i-1)*num_Z+1):(i*num_Z)] / (2*dnorm(w_vec[i]))
+        GZ_segment[i*2-1, ] <- r_GZ
+        GZ_segment[i*2, ] <- r_GZ
+      }
+    }
+    
+    # Build the GW part
+    if (num_W != 0) {
+      GW_segment <- matrix(data=NA, nrow=2*num_G, ncol=num_W) 
+      for (i in 1:num_G) {
+        r_GW <- rho_GW[((i-1)*num_W+1):(i*num_W)] / (2*dnorm(w_vec[i]))
+        GW_segment[i*2-1, ] <- r_GW
+        GW_segment[i*2, ] <- r_GW
+      }
     }
    
-    # Now put it all together.
-    # Top left 3x3 always there.
-    sig_mat_total <- matrix(data=NA, nrow=(3+num_Z+num_W), ncol=(3+num_Z+num_W))
-    sig_mat_total[1:3, 1:3] <- sig_mat_GE
+    # Now put it all together
+    # Add the G segment first
+    MVN_sig_tot <- matrix(data=NA, nrow=(2*num_G+num_Z+num_W+1), ncol=(2*num_G+num_Z+num_W+1))
+    MVN_sig_tot[1:(2*num_G), 1:(2*num_G)] <- G_segment
     
-    # If we have a Z
-    if (num_Z > 0) {
-      sig_mat_total[4:(3+num_Z), 1:3] <- sig_mat_Z_column
-      sig_mat_total[1:3, 4:(3+num_Z)] <- t(sig_mat_Z_column)
-      sig_mat_total[4:(3+num_Z), 4:(3+num_Z)] <- sig_mat_ZZ
+    # Then the GE segment
+    MVN_sig_tot[(2*num_G+1), 1:(2*num_G)] <- GE_segment
+    MVN_sig_tot[1:(2*num_G), (2*num_G+1)] <- GE_segment
+    MVN_sig_tot[(2*num_G+1), (2*num_G+1)] <- 1
+    
+    # Most complicated is if both Z and W exist
+    if (num_Z > 0 & num_W > 0) {
+      # Then the GZ segment
+      MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), 1:(2*num_G)] <- t(GZ_segment)
+      MVN_sig_tot[1:(2*num_G), (2*num_G+2):(2*num_G+num_Z+1)] <- GZ_segment
+      
+      # Then the GW segment
+      MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), 1:(2*num_G)] <- t(GW_segment)
+      MVN_sig_tot[1:(2*num_G), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- GW_segment
+      
+      # Then the EZ segment
+      MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+1)] <- rho_EZ
+      MVN_sig_tot[(2*num_G+1), (2*num_G+2):(2*num_G+num_Z+1)] <- rho_EZ
+      
+      # Then the ZZ segment
+      if (num_Z == 1) {
+        MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+2):(2*num_G+num_Z+1)] <- 1
+      } else {
+        MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+2):(2*num_G+num_Z+1)] <- cov_Z
+      }
+      
+      # Then the EW segment
+      MVN_sig_tot[(2*num_G+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- rho_EW
+      MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+1)] <- rho_EW
+      
+      # Build the ZW part
+      ZW_segment <- matrix(data=NA, nrow=num_Z, ncol=num_W) 
+      for (i in 1:num_Z) {
+        ZW_segment[i, ] <- rho_ZW[((i-1)*num_W+1):(i*num_W)]
+      }
+      
+      # Then the ZW segment
+      MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- ZW_segment
+      MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+2):(2*num_G+num_Z+1)] <- t(ZW_segment)
+      
+      # Then the WW segment
+      if (num_W == 1) {
+        MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- 1
+      } else {
+        MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- cov_W
+      }
     }
     
-    # If we have a W
-    if (num_W > 0) {
-      sig_mat_total[(4+num_Z):(3+num_Z+num_W), 1:3] <- sig_mat_W_column
-      sig_mat_total[1:3, (4+num_Z):(3+num_Z+num_W)] <- t(sig_mat_W_column)
-      sig_mat_total[(4+num_Z):(3+num_Z+num_W), (4+num_Z):(3+num_Z+num_W)] <- sig_mat_WW
+    # If only Z and no W
+    if (num_Z > 0 & num_W == 0) {
+      # Then the GZ segment
+      MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), 1:(2*num_G)] <- t(GZ_segment)
+      MVN_sig_tot[1:(2*num_G), (2*num_G+2):(2*num_G+num_Z+1)] <- GZ_segment
+      
+      # Then the EZ segment
+      MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+1)] <- rho_EZ
+      MVN_sig_tot[(2*num_G+1), (2*num_G+2):(2*num_G+num_Z+1)] <- rho_EZ
+      
+      # Then the ZZ segment
+      if (num_Z == 1) {
+        MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+2):(2*num_G+num_Z+1)] <- 1
+      } else {
+        MVN_sig_tot[(2*num_G+2):(2*num_G+num_Z+1), (2*num_G+2):(2*num_G+num_Z+1)] <- cov_Z
+      }
+      
     }
     
-    # If we have both Z and W
-    if (num_Z > 0 & num_W > 0)
-    {
-      sig_mat_total[4:(3+num_Z), (4+num_Z):(3+num_Z+num_W)] <- sig_mat_Z_W
-      sig_mat_total[(4+num_Z):(3+num_Z+num_W), 4:(3+num_Z)] <- t(sig_mat_Z_W)
+    # If only W and no Z
+    if (num_Z == 0 & num_W > 0) {
+      # Then the GW segment
+      MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), 1:(2*num_G)] <- t(GW_segment)
+      MVN_sig_tot[1:(2*num_G), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- GW_segment
+    
+      # Then the EW segment
+      MVN_sig_tot[(2*num_G+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- rho_EW
+      MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+1)] <- rho_EW
+      
+      # Then the WW segment
+      if (num_W == 1) {
+        MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- 1
+      } else {
+        MVN_sig_tot[(2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1), (2*num_G+num_Z+2):(2*num_G+num_Z+num_W+1)] <- cov_W
+      }
     }
     
+  
     # Final sanity check that the building went correctly.
-    if (!isSymmetric(sig_mat_total)) {stop("Problem building covariance matrix!")}
+    if (!isSymmetric(MVN_sig_tot)) {stop("Problem building covariance matrix!")}
     
     # Now make sure we can actually generate data with this structure
-    test_data <- tryCatch(mvtnorm::rmvnorm(n=1, sigma=sig_mat_total), 
+    test_data <- tryCatch(mvtnorm::rmvnorm(n=1, sigma=MVN_sig_tot), 
     				warning=function(w) w, error=function(e) e)
     if (class(test_data)[1] != 'matrix') {stop('You specified an impossible covariance matrix!')}
     
-    return(list(sig_mat_total=sig_mat_total, sig_mat_ZZ=sig_mat_ZZ, sig_mat_WW=sig_mat_WW))
+    return(list(sig_mat_total=MVN_sig_tot))
 }
 
 

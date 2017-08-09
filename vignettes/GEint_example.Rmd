@@ -11,7 +11,7 @@ vignette: >
 
 GEint is designed to (1) provide results about the bias of fitted regression covariates in misspecified Gene-Environment Interaction (GxE) models and (2) offer the novel Bootstrap Inference with Corrected Sandwich (BICS) procedure for performing testing in GxE models. For the statistical details, see:
 
-> Testing for Gene-Environment Interaction under Misspecification of the Environment, *Submitted*, Sun, Carroll, Christiani, and Lin (2017)
+> Testing for Gene-Environment Interaction under Misspecification of the Environment, *In Revision*, Sun, Carroll, Christiani, and Lin (2017)
 
 This short vignette is designed to show you the main functionality of GEint.  Specifically, it will cover:
 
@@ -21,7 +21,7 @@ This short vignette is designed to show you the main functionality of GEint.  Sp
 
 ## Introduction - Background and statistical setting
 
-A Genome-Wide Environment Interaction Study (GWEIS) usually involves a large number of genetic markers (d~500,000), a single environmental exposure, and a single outcome.  For each of these markers, we typically fit a separate regression model for the outcome.  For each $j$=1,...,d, the $j$th marker, the environment, and a ($j$th marker)-environment interaction term is included in the linear predictor (possibly other covariates as well). A major issue in conducting (GWEIS) is that $d$ p-values from testing the interaction terms often show a large departure from uniformity, while p-values from a standard GWAS on the same data (fitting a model without the interaction term and testing only for the effect of the genetic marker) appear to be completely uniform.  For examples, GWEIS p-values may look like:
+A Genome-Wide Environment Interaction Study (GWEIS) usually involves a large number of genetic markers (d~1,000,000), a single environmental exposure, and a single outcome.  For each of these markers, we typically fit a separate regression model for the outcome.  For each $j$=1,...,d, the $j$th marker, the environment, and a ($j$th marker)-environment interaction term is included in the linear predictor (possibly other covariates as well). A major issue in conducting (GWEIS) is that $d$ p-values from testing the interaction terms often show a large departure from uniformity, while p-values from a standard GWAS on the same data (fitting a model without the interaction term and testing only for the effect of the genetic marker) appear to be completely uniform.  For examples, GWEIS p-values may look like:
 
 ```{r fig.width=8, fig.height=5, echo=FALSE}
 set.seed(100)
@@ -37,23 +37,24 @@ plot(expected, observed)
 abline(0,1)
 ```
 
-We show in our paper that misspecification of the GWEIS model can lead to biased estimates of the interaction coefficient, which is a possible cause of nonuniform p-values like those seen above.  This bias can be calculated analytically for linear regression models.  Another possible cause of the nonuniform p-values is bias in the standard error estimate for the regression coefficient.  In the paper we show that the commonly proposed 'sandwich' standard error estimate can be anticonservative in moderate samples.  We propose BICS to correct the issue.
+We show in our paper that misspecification of the GWEIS model can lead to biased estimates of the interaction coefficient, which is a possible cause of nonuniform p-values like those seen above.  This bias can be calculated analytically for linear regression models.  Another possible cause of the nonuniform p-values is bias in the standard error estimate for the regression coefficient.  In the paper we also show that the commonly proposed 'sandwich' standard error estimate can be anticonservative in moderate sample sizes.  We propose BICS to correct the issue.
 
 Specifically in the paper and in this package we assume that the true model for the outcome is:
 
-$$E[Y_{i}] = \beta_{0} + \beta_{G}*G_{i} + \beta_{E}*f(E_{i}) + \beta_I*G_{i}*h(E)_{i} + \mathbf{Z}_{i}^{T}\boldsymbol{\beta}_{Z} + \mathbf{M}_{i}^{T}\boldsymbol{\beta}_{M}$$
+$$E[Y_{i}] = \beta_{0} + \mathbf{G}_{i}^{T}\boldsymbol{\beta}_{G}  + \beta_{E}*f(E_{i}) + h(E)_{i}*\mathbf{G}_{i}^{T}\boldsymbol{\beta}_{I} + \mathbf{Z}_{i}^{T}\boldsymbol{\beta}_{Z} + \mathbf{M}_{i}^{T}\boldsymbol{\beta}_{M}$$
 
 while the fitted model is:
 
-$$E[Y_{i}] = \alpha_{0} + \alpha_{G}*G_{i} + \alpha_{E}*E_{i} + \alpha_I*G_{i}*E_{i} + \mathbf{Z}_{i}^{T}\boldsymbol{\alpha}_{Z} + \mathbf{W}_{i}^{T}\boldsymbol{\alpha}_{W}$$
+$$E[Y_{i}] = \alpha_{0} + \mathbf{G}_{i}^{T}\boldsymbol{\alpha}_{G} + \alpha_{E}*E_{i} + E_{i}*\mathbf{G}_{i}^{T}\boldsymbol{\alpha}_{I} + \mathbf{Z}_{i}^{T}\boldsymbol{\alpha}_{Z} + \mathbf{W}_{i}^{T}\boldsymbol{\alpha}_{W}$$
 
-with $f()$ and $h()$ being known functions, and $\mathbf{Z}_{i}$ and $\mathbf{W}_{i}$ being vectors of length $p$ and $q$ respectively.
+where $f()$ are $h()$ possibly nonlinear functions and $\mathbf{Z}_{i}$, $\mathbf{M}_{i}$, and $\mathbf{W}_{i}$ are vectors of length $p$, $q$, and $r$ respectively.
+Although it is most common to study a single marker at a time, we permit $\mathbf{G}_{i}$ to be a vector as well, allowing for the case where a researcher might want to study a set of $d$ genetic variables (i.e. all the SNPs in a gene) and perform a $d$-df joint test.
 
 ## Bias Analysis
 
-To get an exact, analytical solution for the asymptotic values of $\alpha_{0},\alpha_{G}...,\boldsymbol{\alpha}_{W}$, we obviously need to know the corresponding values of $\beta_{0},\beta_{G}...,\boldsymbol{\beta}_{M}$ in the true model.  We also need to know a number of expectations of the form $E[G*E]$ and a number of higher order moments such as $E[G*G*h(E)]$.  Once we know these terms, we can pass them all to `GE_bias()` and get the exact solution for the fitted values.  Since there are a lot of terms, we provide the helper function `GE_enumerate_inputs()` which tells you the exact terms needed as well as the order to input them.
+To get an exact, analytical solution for the asymptotic values of $\alpha_{0},\alpha_{G}...,\boldsymbol{\alpha}_{W}$, we need to know the corresponding values of $\beta_{0},\beta_{G}...,\boldsymbol{\beta}_{M}$ in the true model.  We also need to know a number of expectations of the form $E[G*E]$ and a number of higher order moments such as $E[G*G*h(E)]$.  Once we know these terms, we can pass them all to `GE_bias()` and get the exact solution for the fitted values.  Since there are a lot of terms, we provide the helper function `GE_enumerate_inputs()` which tells you the exact terms needed as well as the order to input them.
 
-However, many researchers may not have a good idea of how to calculate/estimate so many expectations and higher order moments.  To simplify the calculations, we offer the function `GE_bias_normal_squaredmis()`.  This function makes some strong assumptions, but in exchange, it allows the user to input a much smaller vector of correlations, and then the function will calculate the rest of the terms.  Specifically we assume (1) that the two minor alleles of the genetic term are generated by thresholding two independent normal random variables.  We also assume that (2) the two independent normals from (1) as well as the other fitted covariates E,Z,W have a joint multivariate normal distribution with common mean 0 and marginal variance 1.  Finally we assume that (3) $f(x)=h(x)=x^{2}$ and that $M_{j}=W_{j}^{2}$ for all $j=1,...,q$. These assumptions correspond to the case where the researcher has standardized all their covariates to have mean 0 and variance 1 (expect for G, which is centered at 0 but does not have unit variance), and the covariates appear to be approximately normally distributed.  `GE_bias_normal_squaredmis()` will also output the calculated higher order terms for use with `GE_bias()` in case you would like to see how those terms look.
+However, many researchers may not have a good idea of how to calculate/estimate so many expectations and higher order moments.  To simplify the calculations, we offer the function `GE_bias_normal_squaredmis()`.  This function makes some strong assumptions, but in exchange, it allows the user to input a much smaller vector of correlations, and then the function will calculate the rest of the terms.  Specifically we assume (1) that the two minor alleles of any genetic term are generated by thresholding two independent normal random variables.  We also assume that (2) the normal RVs underlying the genetic terms have a joint multivariate normal distribution with all the other fitted covariates E,Z,W, where all variables have common mean 0 and marginal variance 1.  Finally we assume that (3) $f(x)=h(x)=x^{2}$ and that $M_{j}=W_{j}^{2}$ for all $j=1,...,q$. These assumptions correspond to the case where the researcher has standardized all their covariates to have mean 0 and variance 1 (expect for G, which is centered at 0 but does not have unit variance), and the covariates appear to be approximately normally distributed.  `GE_bias_normal_squaredmis()` will also output the calculated higher order terms for use with `GE_bias()` in case you would like to see how those terms look.
 
 An simple example follows:
 
@@ -62,12 +63,12 @@ library(GEint)
 beta_list <- list(1, 1, 1, 0, c(1,1), 1)
 rho_list <- list(0.1, c(0.1, 0.1), c(0.1,0.1), 0.1, 0.1, c(0.1, 0.1))
 prob_G <- 0.3
-cov_Z <- 0.1
-cov_W <- NULL
-normal_assumptions <- GE_bias_normal_squaredmis(beta_list=beta_list, rho_list=rho_list, prob_G=prob_G, cov_Z=cov_Z)
+cov_Z <- matrix(data=c(1, 0.2, 0.2, 1), nrow=2, ncol=2)
+cov_W <- 1
+normal_assumptions <- GE_bias_normal_squaredmis(beta_list=beta_list, rho_list=rho_list, prob_G=prob_G, cov_Z=cov_Z, cov_W=cov_W)
 ```
 
-Note that in this example $Z$ has dimension 2 and $W$ has dimension 1.  We can use the higher order moments calculated in `GE_bias_normal_squaredmis()` as input for `GE_bias()` to check our work:
+Note that in this example $G$ has dimension 1, $Z$ has dimension 2, and $W$ has dimension 1.  We can use the higher order moments calculated in `GE_bias_normal_squaredmis()` as input for `GE_bias()` to check our work:
 
 ```{r fig.width=8, fig.height=5}
 cov_list <- normal_assumptions$cov_list
@@ -82,11 +83,12 @@ unlist(normal_assumptions$alpha_list)
 ```
 
 
-They match!  The results are presented in the order $\alpha_{0}, \alpha_{G}, \alpha_{E}, \alpha_{I}, \boldsymbol{\alpha}_{Z}, \boldsymbol{\alpha}_{W}$.
+They match!  The results are presented in the order $\alpha_{0}, \boldsymbol{\alpha_{G}}, \alpha_{E}, \boldsymbol{\alpha_{I}}, \boldsymbol{\alpha}_{Z}, \boldsymbol{\alpha}_{W}$.
+
 
 ## Bootstrap Inference with Corrected Sandwich (BICS)
 
-Even if the regression coefficient $\alpha_{I}$ is asymptotically unbiased, we may still see non-uniform p-values if our standard error estimate is biased in finite samples.  Thus we introduce the BICS estimator.  To apply BICS almost as simple as a standard lm() call.  Just give the function your outcome and design matrix.  To apply BICS genome-wide, simply adjust the design matrix for each new $G$ term and then run BICS again.
+Even if the regression coefficients $\boldsymbol{\alpha_{I}}$ are asymptotically unbiased, we may still see non-uniform p-values if our standard error estimates are biased in finite samples.  Thus we introduce the BICS tool for inference in GWEIS.  To apply BICS is almost as simple as a standard lm() call.  Just give the function your outcome and design matrix (including intercept term).  To apply BICS genome-wide, simply adjust the design matrix for each new $G$ term and then run BICS again.
 
 
 ```{r fig.width=8, fig.height=5}
@@ -105,4 +107,4 @@ GE_BICS(outcome=Y_binary, design_mat=design_mat, desired_coef=4, outcome_type='D
 
 ## Questions?
 
-Thanks for reading!  If you have any questions or concerns, please contact me at ryansun.work@gmail.com.
+Thanks for reading!  If you have any questions or concerns, please contact me at ryansun.work AT gmail.com.
