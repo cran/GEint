@@ -41,4 +41,3 @@ solutions <- GE_bias_normal_squaredmis_old( beta_list=as.list(runif(n=6, min=0, 
 GE_nleqslv_old(beta_list=solutions$beta_list, solutions$cov_list, solutions$cov_mat_list, 
 					solutions$mu_list, solutions$HOM_list)
 }
-

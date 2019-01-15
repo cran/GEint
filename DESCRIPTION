@@ -1,8 +1,8 @@
 Package: GEint
 Type: Package
 Title: Misspecified Models for Gene-Environment Interaction
-Version: 0.1.4
-Date: 2017-08-04
+Version: 0.1.5
+Date: 2019-01-14
 Authors@R: c(
 	person("Ryan", "Sun", email = "ryansun.work@gmail.com", role = c("aut", "cre")),
 	person("Richard", "Barfield", role="ctb"))
@@ -21,13 +21,13 @@ Description: First major functionality is to compute the bias in misspecified li
 Imports: mvtnorm, bindata, nleqslv, pracma, speedglm, rje, geepack,
         stats
 License: GPL-3
-RoxygenNote: 5.0.1
+RoxygenNote: 6.1.1
 Suggests: knitr, rmarkdown, testthat
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2017-08-08 04:43:59 UTC; ryansun
+Packaged: 2019-01-15 03:21:35 UTC; ryansun
 Author: Ryan Sun [aut, cre],
   Richard Barfield [ctb]
 Maintainer: Ryan Sun <ryansun.work@gmail.com>
 Repository: CRAN
-Date/Publication: 2017-08-09 20:33:03 UTC
+Date/Publication: 2019-01-15 05:20:07 UTC

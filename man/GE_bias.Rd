@@ -39,4 +39,3 @@ rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 GE_bias(beta_list=solutions$beta_list, solutions$cov_list, solutions$cov_mat_list, 
 					solutions$mu_list, solutions$HOM_list)
 }
-

@@ -5,7 +5,8 @@
 \title{GE_test_moment_calcs.R}
 \usage{
 GE_test_moment_calcs(beta_list, rho_list, prob_G, cov_Z = NULL,
-  cov_W = NULL, num_sub = 2e+06, test_threshold = 0.003, corr_G = NULL)
+  cov_W = NULL, num_sub = 2e+06, test_threshold = 0.003,
+  corr_G = NULL)
 }
 \arguments{
 \item{beta_list}{A list of the effect sizes in the true model.
@@ -51,4 +52,3 @@ GE_test_moment_calcs(beta_list=as.list(runif(n=6, min=0, max=1)),
 rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 }
 \keyword{internal}
-

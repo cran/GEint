@@ -100,13 +100,13 @@ GE_translate_inputs <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=N
       G_bin_struct <- corr_G
       
       cprob <- tryCatch(bindata::bincorr2commonprob(margprob = prob_G, bincorr=G_bin_struct),
-                        warning=function(w) w, error=function(e) e)
-      if (class(cprob)[1] != 'matrix') {
+                        error=function(e) e)
+      if ('error' %in% class(cprob)) {
         stop ('You specified an invalid corr_G structure')
       }
       sigma_struct <- tryCatch(bindata::commonprob2sigma(commonprob=cprob), 
-                               warning=function(w) w, error=function(e) e)
-      if (class(sigma_struct)[1] != 'matrix') {
+                               error=function(e) e)
+      if ('error' %in% class(sigma_struct)) {
         stop ('You specified an invalid corr_G structure')
       }
       

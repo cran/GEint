@@ -1,4 +1,5 @@
 # test_changing_betas.R
+context("Changing betas")
 
 # See what effects changing each \beta parameter has on the \alpha_I
 # and \alpha_G

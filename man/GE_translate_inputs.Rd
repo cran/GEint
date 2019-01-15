@@ -4,8 +4,8 @@
 \alias{GE_translate_inputs}
 \title{GE_translate_inputs.R}
 \usage{
-GE_translate_inputs(beta_list, rho_list, prob_G, cov_Z = NULL, cov_W = NULL,
-  corr_G = NULL)
+GE_translate_inputs(beta_list, rho_list, prob_G, cov_Z = NULL,
+  cov_W = NULL, corr_G = NULL)
 }
 \arguments{
 \item{beta_list}{A list of the effect sizes in the true model.
@@ -49,4 +49,3 @@ GE_translate_inputs( beta_list=as.list(runif(n=6, min=0, max=1)),
 rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 }
 \keyword{internal}
-

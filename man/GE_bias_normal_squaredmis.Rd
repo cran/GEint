@@ -61,4 +61,3 @@ W always has the same length as M here. \cr
 GE_bias_normal_squaredmis( beta_list=as.list(runif(n=6, min=0, max=1)),
 rho_list=as.list(rep(0.3,6)), cov_Z=1, cov_W=1, prob_G=0.3)
 }
-

@@ -1,5 +1,6 @@
 # test_GE_BICS.R
 # Test BICS for vectors and also against the legacy code.
+context("BICS")
 
 # Expit function
 expit <- function (x) 

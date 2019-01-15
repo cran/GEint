@@ -4,8 +4,8 @@
 \alias{GE_scoreeq_sim}
 \title{GE_scoreeq_sim.R}
 \usage{
-GE_scoreeq_sim(num_sims = 5000, num_sub = 2000, beta_list, rho_list, prob_G,
-  cov_Z = NULL, cov_W = NULL, corr_G = NULL)
+GE_scoreeq_sim(num_sims = 5000, num_sub = 2000, beta_list, rho_list,
+  prob_G, cov_Z = NULL, cov_W = NULL, corr_G = NULL)
 }
 \arguments{
 \item{num_sims}{The number of simulations to run, we suggest 5000.}
@@ -49,4 +49,3 @@ Make the same assumptions as in GE_bias_norm_squaredmis().
 GE_scoreeq_sim( num_sims=10, num_sub=1000, beta_list=as.list(runif(n=6, min=0, max=1)), 
 rho_list=as.list(rep(0.3,6)), prob_G=0.3, cov_Z=1, cov_W=1)
 }
-

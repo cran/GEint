@@ -4,7 +4,8 @@
 \alias{GE_BICS}
 \title{GE_BICS.R}
 \usage{
-GE_BICS(outcome, design_mat, num_boots = 1000, desired_coef, outcome_type)
+GE_BICS(outcome, design_mat, num_boots = 1000, desired_coef,
+  outcome_type, check_singular = FALSE)
 }
 \arguments{
 \item{outcome}{The outcome vector}
@@ -16,6 +17,8 @@ GE_BICS(outcome, design_mat, num_boots = 1000, desired_coef, outcome_type)
 \item{desired_coef}{The column in the design matrix holding the interaction covariate}
 
 \item{outcome_type}{Either 'D' for dichotomous outcome or 'C' for continuous outcome}
+
+\item{check_singular}{Make sure the design matrix can be inverted for variance estimation}
 }
 \value{
 The p-value for the interaction effect
@@ -31,4 +34,3 @@ design_mat <- cbind(1, G, E, G*E)
 outcome <- rnorm(500)
 GE_BICS(outcome=outcome, design_mat=design_mat, desired_coef=4, outcome_type='C')
 }
-

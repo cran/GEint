@@ -1,4 +1,5 @@
 # test_valid_inference.R
+context("Valid inference")
 
 # Make sure the conditions for valid inference on \alpha_I and 
 # \alpha_G are correct.

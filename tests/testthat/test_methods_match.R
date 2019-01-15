@@ -1,4 +1,5 @@
 # test_methods_match.R
+context("Methods match")
 
 # Make sure GE_bias(), GE_normal_squaredmis(), GE_nleqslv(), GE_scoreeq_sim()
 # all give the same results.
@@ -111,25 +112,25 @@ test_that("New code matches legacy results", {
   new_normal_squaredmis <- GE_bias_normal_squaredmis(beta_list=beta_list, rho_list=rho_list, 
                                                          prob_G=prob_G, cov_Z=cov_Z, 
                                                          cov_W=cov_W, corr_G=NULL)
-  old_normal_squaredmis <- GE_bias_normal_squaredmis_old(beta_list=beta_list, rho_list=rho_list,
-                                                         cov_Z=cov_Z[upper.tri(cov_Z)],
-                                                         cov_W=cov_W[upper.tri(cov_W)],
-                                                         prob_G=prob_G)
-  expect_equal(unname(unlist(new_normal_squaredmis$alpha_list)), 
-               unlist(old_normal_squaredmis$alpha_list))
+  #old_normal_squaredmis <- GE_bias_normal_squaredmis_old(beta_list=beta_list, rho_list=rho_list,
+  #                                                       cov_Z=cov_Z[upper.tri(cov_Z)],
+  #                                                       cov_W=cov_W[upper.tri(cov_W)],
+  #                                                       prob_G=prob_G)
+  #expect_equal(unname(unlist(new_normal_squaredmis$alpha_list)), 
+  #             unlist(old_normal_squaredmis$alpha_list))
   
   # Check nleqslv
-  new_nleqslv <- GE_nleqslv(beta_list=new_normal_squaredmis$beta_list,
-                                        cov_list=new_normal_squaredmis$cov_list,
-                                        cov_mat_list=new_normal_squaredmis$cov_mat_list,
-                                        mu_list=new_normal_squaredmis$mu_list,
-                                        HOM_list=new_normal_squaredmis$HOM_list)
-  old_nleqslv <- GE_nleqslv_old(beta_list=old_normal_squaredmis$beta_list, 
-                                    cov_list=old_normal_squaredmis$cov_list,
-                                    cov_mat_list=old_normal_squaredmis$cov_mat_list,
-                                    mu_list=old_normal_squaredmis$mu_list, 
-                                    HOM_list=old_normal_squaredmis$HOM_list)
-  expect_equal(new_nleqslv$x, old_nleqslv$x)
+  #new_nleqslv <- GE_nleqslv(beta_list=new_normal_squaredmis$beta_list,
+  #                                      cov_list=new_normal_squaredmis$cov_list,
+  #                                      cov_mat_list=new_normal_squaredmis$cov_mat_list,
+  #                                      mu_list=new_normal_squaredmis$mu_list,
+  #                                      HOM_list=new_normal_squaredmis$HOM_list)
+  #old_nleqslv <- GE_nleqslv_old(beta_list=old_normal_squaredmis$beta_list, 
+  #                                  cov_list=old_normal_squaredmis$cov_list,
+  #                                  cov_mat_list=old_normal_squaredmis$cov_mat_list,
+  #                                  mu_list=old_normal_squaredmis$mu_list, 
+  #                                  HOM_list=old_normal_squaredmis$HOM_list)
+  #expect_equal(new_nleqslv$x, old_nleqslv$x)
   
   # Check simulation
   set.seed(0)

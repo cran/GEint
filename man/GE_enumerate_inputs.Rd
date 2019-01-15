@@ -16,4 +16,3 @@ cov_mat_list like E[ZZ], these should be matrices where the (i,j) element is E[Z
 \examples{
 GE_enumerate_inputs()
 }
-

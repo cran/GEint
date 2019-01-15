@@ -1,4 +1,5 @@
 # test_legacy_code.R
+context("Legacy code")
 
 # Generate effect sizes and covariances for true
 # model where we can do valid inference on \alpha_I

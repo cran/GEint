@@ -4,7 +4,8 @@
 \alias{GE_BICS_old}
 \title{GE_BICS_old.R}
 \usage{
-GE_BICS_old(outcome, design_mat, num_boots = 1000, desired_coef, outcome_type)
+GE_BICS_old(outcome, design_mat, num_boots = 1000, desired_coef,
+  outcome_type)
 }
 \arguments{
 \item{outcome}{The outcome vector}
@@ -31,4 +32,3 @@ design_mat <- cbind(1, G, E, G*E)
 outcome <- rnorm(500)
 GE_BICS_old(outcome=outcome, design_mat=design_mat, desired_coef=4, outcome_type='C')
 }
-
