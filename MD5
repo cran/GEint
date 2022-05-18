@@ -1,4 +1,4 @@
-44c85294f9c1dfab69bc0fc1fe232cb3 *DESCRIPTION
+1366f2c2cb42ec16673ddaabd513bde1 *DESCRIPTION
 5f5dfde0fd16766fe15c5d7bd8c512ff *NAMESPACE
 0367902411701d70e7633168ee58860a *R/GE_BICS.R
 df4909c2a72b2d79cb6fd8862ae38cbb *R/GE_BICS_old.R
@@ -14,12 +14,12 @@ e169682deb19e3b49e1068d89f567802 *R/GE_bias_old.R
 23c427326afaf446d564cf4afa3caca0 *R/GE_scoreeq_sim_old.R
 9b57088a1981af6d8aaf2500c2ff3be4 *R/GE_test_moment_calcs.R
 c711efd388dbe2735d919257eb5f8dd5 *R/GE_test_moment_calcs_old.R
-cd7159043a30750af4bb8f835cad2d37 *R/GE_translate_inputs.R
-33c69d1b6638ce48b02efc1ac8b29d93 *R/GE_translate_inputs_old.R
-66a03f0453b7e0b292b65d1f8bdee4da *build/vignette.rds
-3abd54f18c1b2db20ed91e98fe1ecd9d *inst/doc/GEint_example.R
-bf821ee516e464d64d11faa0c753e74d *inst/doc/GEint_example.Rmd
-84c1cc62b4fe5aeae68a2e96855e15aa *inst/doc/GEint_example.html
+fbb89ec843bd70cccbc14a73304bdce8 *R/GE_translate_inputs.R
+68136a460ee009beef3a765d7c84c0f9 *R/GE_translate_inputs_old.R
+1448d9bb72d1cf7ba0e3b85297ef1940 *build/vignette.rds
+0095cc2ebe8d1349007d89fe8c2cd232 *inst/doc/GEint_example.R
+612b9074429bc6669d5f726fdcb13eec *inst/doc/GEint_example.Rmd
+40345532bb3b3fa4e87c467ea228a2c8 *inst/doc/GEint_example.html
 50290440ec80acf68ffc13bd3b22113c *man/GE_BICS.Rd
 0f0dd054c77d611b58f2efb761df2692 *man/GE_BICS_old.Rd
 0f04c34e2e75855057e457f63ccc25b8 *man/GE_bias.Rd
@@ -42,4 +42,4 @@ c4e04f5ad2a76b444cc40e3c55c09dc6 *tests/testthat/test_BICS.R
 cd27f3b844a54ba4647d30aeab851260 *tests/testthat/test_legacy_code.R
 e4579dc50b9dcd898c0e55b0a9080417 *tests/testthat/test_methods_match.R
 8eecf044dc639e6450266862443d8adb *tests/testthat/test_valid_inference.R
-bf821ee516e464d64d11faa0c753e74d *vignettes/GEint_example.Rmd
+612b9074429bc6669d5f726fdcb13eec *vignettes/GEint_example.Rmd

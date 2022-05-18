@@ -1,4 +1,4 @@
-## ----fig.width=8, fig.height=5, echo=FALSE-------------------------------
+## ----fig.width=8, fig.height=5, echo=FALSE------------------------------------
 set.seed(100)
 n <- 10000
 n_perturb <- n
@@ -11,7 +11,7 @@ expected <- -log10((1:n)/(n+1))
 plot(expected, observed)
 abline(0,1)
 
-## ----fig.width=8, fig.height=5-------------------------------------------
+## ----fig.width=8, fig.height=5------------------------------------------------
 library(GEint)
 beta_list <- list(1, 1, 1, 0, c(1,1), 1)
 rho_list <- list(0.1, c(0.1, 0.1), c(0.1,0.1), 0.1, 0.1, c(0.1, 0.1))
@@ -20,7 +20,7 @@ cov_Z <- matrix(data=c(1, 0.2, 0.2, 1), nrow=2, ncol=2)
 cov_W <- 1
 normal_assumptions <- GE_bias_normal_squaredmis(beta_list=beta_list, rho_list=rho_list, prob_G=prob_G, cov_Z=cov_Z, cov_W=cov_W)
 
-## ----fig.width=8, fig.height=5-------------------------------------------
+## ----fig.width=8, fig.height=5------------------------------------------------
 cov_list <- normal_assumptions$cov_list
 cov_mat_list <- normal_assumptions$cov_mat_list
 mu_list <- normal_assumptions$mu_list
@@ -31,7 +31,7 @@ no_assumptions <- GE_bias(beta_list, cov_list, cov_mat_list, mu_list, HOM_list)
 unlist(no_assumptions)
 unlist(normal_assumptions$alpha_list)
 
-## ----fig.width=8, fig.height=5-------------------------------------------
+## ----fig.width=8, fig.height=5------------------------------------------------
 set.seed(100)
 n <- 500
 Y_continuous <- rnorm(n=n)

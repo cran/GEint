@@ -34,10 +34,10 @@
 GE_translate_inputs_old <- function(beta_list, rho_list, prob_G, cov_Z=NULL, cov_W=NULL)
 {
 	  # First, make sure we got good inputs
-  	if (length(beta_list) != 6 | length(rho_list) != 6 | class(beta_list) != 'list' | class(rho_list) != 'list')
-  	{
-  	  stop('Input vectors not the right size!')
-  	}
+    if (length(beta_list) != 6 | length(rho_list) != 6 | !inherits(beta_list, "list") | !inherits(rho_list, "list"))
+    {
+  	    stop('Input vectors not the right size!')
+    }
 
 	  # How long are these vectors?  Remember that W is the same length as M by assumption.
     # Check for Z and M/W nonexistence LATER
